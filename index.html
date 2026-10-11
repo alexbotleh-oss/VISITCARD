@@ -1,1 +1,2581 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>CARD — Мой кошелёк</title>
 
+<meta name="application-name" content="CARD" />
+<meta name="theme-color" content="#111111" />
+<meta name="description" content="Локальный кошелёк скидочных карт и визиток: рубашки, градиенты, QR и штрихкоды, резервные копии. Работает офлайн." />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="CARD" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="format-detection" content="telephone=no" />
+
+<link rel="manifest" id="manifestLink" />
+<link rel="icon" id="iconLink" />
+<link rel="apple-touch-icon" id="appleIconLink" />
+
+<style>
+:root{
+  --bg:#f3f4f6; --card:#fff; --text:#111; --muted:#667085; --border:#dfe3e8;
+  --ok:#00a650; --err:#d1001f; --shadow:0 8px 24px rgba(12,18,30,.10);
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);
+  -webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+#app{max-width:520px;margin:0 auto;min-height:100dvh;position:relative;background:var(--bg)}
+
+.screen{display:none;padding:0 12px calc(24px + var(--safe-b))}
+.screen.tab{padding-bottom:calc(88px + var(--safe-b))}
+.screen.active{display:block}
+
+.topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;
+  padding:calc(12px + var(--safe-t)) 0 12px;background:var(--bg)}
+.topbar h1{font-size:clamp(18px,5.2vw,22px);margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:var(--card);
+  font-size:19px;line-height:1;display:grid;place-items:center;cursor:pointer;user-select:none;touch-action:manipulation;flex:0 0 auto}
+.icon-btn:active{transform:scale(.95)}
+.count{font-size:12px;color:var(--muted);margin:-4px 0 8px 2px}
+
+.dropdown{position:absolute;right:0;top:calc(100% - 4px);background:var(--card);border:1px solid #e5e7eb;
+  border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:216px;z-index:40}
+.dropdown button{width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:10px;font:inherit;cursor:pointer}
+.dropdown button:active{background:#f2f3f5}
+.dropdown .sep{height:1px;background:#eef0f3;margin:4px 6px}
+
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:4px}
+.tile{position:relative;aspect-ratio:1.586/1;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);
+  background:#fff;cursor:pointer;user-select:none;touch-action:manipulation}
+.tile:active{transform:scale(.985)}
+.empty-note{grid-column:1/-1;color:var(--muted);font-size:14px;padding:22px 4px;text-align:center;line-height:1.4}
+
+.bottom-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:520px;
+  height:calc(68px + var(--safe-b));padding-bottom:var(--safe-b);background:var(--card);border-top:1px solid #e5e7eb;display:flex;z-index:30}
+.bottom-nav button{flex:1;border:0;background:transparent;color:var(--muted);font-size:12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;user-select:none;touch-action:manipulation}
+.bottom-nav button i{font-style:normal;font-size:19px}
+.bottom-nav button.active{color:var(--text);font-weight:700}
+
+/* ---------- карточка / лицо ---------- */
+.card-preview{width:min(100%,340px);aspect-ratio:1.586/1;border-radius:18px;position:relative;overflow:hidden;box-shadow:var(--shadow);background:#fff}
+.preview-wrap{display:grid;place-items:center;padding:2px 0 12px;perspective:1200px}
+.flipper{width:min(100%,340px);aspect-ratio:1.586/1;position:relative;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.4,.1,.2,1)}
+.flipper.flipped{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;border-radius:18px;overflow:hidden;box-shadow:var(--shadow);background:#fff;backface-visibility:hidden}
+.face.back{transform:rotateY(180deg)}
+.card-image-layer{position:absolute;inset:0;overflow:hidden;z-index:0}
+.card-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center;pointer-events:none;user-select:none;-webkit-user-drag:none}
+.card-text{position:absolute;inset:12px;display:flex;font-weight:800;line-height:1.15;text-shadow:0 1px 8px rgba(0,0,0,.28);
+  pointer-events:none;word-break:break-word;user-select:none;z-index:2}
+.label-chip{position:absolute;z-index:3;display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;
+  border-radius:999px;font-weight:800;line-height:1.1;max-width:80%;word-break:break-word;box-shadow:0 2px 8px rgba(0,0,0,.2);pointer-events:none;user-select:none}
+.pos-tl{justify-content:flex-start;align-items:flex-start;text-align:left}
+.pos-tc{justify-content:center;align-items:flex-start;text-align:center}
+.pos-tr{justify-content:flex-end;align-items:flex-start;text-align:right}
+.pos-ml{justify-content:flex-start;align-items:center;text-align:left}
+.pos-mc{justify-content:center;align-items:center;text-align:center}
+.pos-mr{justify-content:flex-end;align-items:center;text-align:right}
+.pos-bl{justify-content:flex-start;align-items:flex-end;text-align:left}
+.pos-bc{justify-content:center;align-items:flex-end;text-align:center}
+.pos-br{justify-content:flex-end;align-items:flex-end;text-align:right}
+.lbl-tl{left:10px;top:10px}.lbl-tc{left:50%;top:10px;transform:translateX(-50%)}.lbl-tr{right:10px;top:10px}
+.lbl-ml{left:10px;top:50%;transform:translateY(-50%)}.lbl-mc{left:50%;top:50%;transform:translate(-50%,-50%)}.lbl-mr{right:10px;top:50%;transform:translateY(-50%)}
+.lbl-bl{left:10px;bottom:10px}.lbl-bc{left:50%;bottom:10px;transform:translateX(-50%)}.lbl-br{right:10px;bottom:10px}
+.brand-mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:1;pointer-events:none}
+.brand-mark .wm{font-weight:900;letter-spacing:-.02em;text-transform:lowercase}
+.brand-mark .star{width:26%;max-width:74px}
+
+.fields-layer{position:absolute;inset:0;z-index:2;pointer-events:none}
+.zone{position:absolute;padding:8px;display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start;gap:3px}
+.zone-tl{left:0;top:0;width:33.34%;height:33.34%}
+.zone-tc{left:33.33%;top:0;width:33.34%;height:33.34%;align-items:center}
+.zone-tr{left:66.66%;top:0;width:33.34%;height:33.34%;align-items:flex-end}
+.zone-ml{left:0;top:33.33%;width:33.34%;height:33.34%}
+.zone-mc{left:33.33%;top:33.33%;width:33.34%;height:33.34%;align-items:center}
+.zone-mr{left:66.66%;top:33.33%;width:33.34%;height:33.34%;align-items:flex-end}
+.zone-bl{left:0;top:66.66%;width:33.34%;height:33.34%}
+.zone-bc{left:33.33%;top:66.66%;width:33.34%;height:33.34%;align-items:center}
+.zone-br{left:66.66%;top:66.66%;width:33.34%;height:33.34%;align-items:flex-end}
+.field-line{font-weight:700;line-height:1.25;text-shadow:0 1px 6px rgba(0,0,0,.22);word-break:break-word;max-width:100%}
+
+.placement-overlay{position:absolute;inset:0;padding:8px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);
+  gap:5px;background:rgba(0,0,0,.42);z-index:9}
+.placement-cell{border:2px dashed rgba(255,255,255,.65);background:rgba(255,255,255,.12);color:#fff;border-radius:10px;
+  font-size:15px;cursor:pointer;display:grid;place-items:center;user-select:none;touch-action:manipulation}
+.placement-cell.active{background:rgba(255,255,255,.38);border-style:solid}
+
+/* ---------- элементы управления ---------- */
+.section-title{font-size:11px;color:var(--muted);margin:14px 0 6px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.row{display:flex;gap:8px;align-items:stretch;margin-bottom:8px}
+.row.scroll{overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+.row.scroll::-webkit-scrollbar,.hscroll::-webkit-scrollbar{height:4px}
+.row.scroll::-webkit-scrollbar-thumb,.hscroll::-webkit-scrollbar-thumb{background:#cfd4dc;border-radius:999px}
+.row.scroll>*{flex:0 0 auto}
+.control-btn{min-width:0;border:1px solid var(--border);background:var(--card);border-radius:12px;padding:6px 8px;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;cursor:pointer;user-select:none;touch-action:manipulation;font:inherit;height:46px}
+.control-btn.compact{min-width:72px;align-items:center;justify-content:center;text-align:center}
+.control-btn.pill{border-radius:999px}
+.control-btn:active{background:#f7f8fa}
+.control-label{font-size:10px;color:var(--muted);line-height:1}
+.control-value{font-size:13px;font-weight:800;line-height:1.2;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.control-input{flex:1;min-width:80px;border:1px solid var(--border);border-radius:12px;padding:0 10px;height:46px;font:inherit;font-weight:700;background:var(--card)}
+select.control-input{font-weight:700}
+textarea.control-input{height:auto;min-height:70px;padding:10px;font-weight:500;resize:vertical}
+.color-square{width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,0,0,.18);cursor:pointer;background:#fff;
+  position:relative;flex:0 0 auto;user-select:none;touch-action:manipulation;padding:0}
+.color-square.plus{border-style:dashed}
+.color-square.on{box-shadow:0 0 0 2px #111 inset}
+.plus-badge{position:absolute;right:2px;bottom:2px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.94);
+  color:#111;font-size:13px;line-height:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.25);pointer-events:none}
+.btn{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:10px 12px;font:inherit;font-weight:700;
+  cursor:pointer;user-select:none;touch-action:manipulation}
+.btn.primary{background:#111;color:#fff;border-color:#111}
+.btn.danger{color:var(--err);border-color:#f2c4c9}
+.btn.small{padding:7px 10px;font-size:13px}
+.btn.block{width:100%;text-align:center}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:active:not(:disabled){transform:scale(.98)}
+.actions{display:flex;gap:10px;margin:16px 0 4px}
+.actions .btn{flex:1;min-width:0}
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.hscroll>*{flex:0 0 auto;scroll-snap-align:start}
+.chip{white-space:nowrap;border:1px solid var(--border);background:var(--card);border-radius:999px;padding:9px 13px;
+  font:inherit;font-size:14px;font-weight:700;cursor:pointer;user-select:none;touch-action:manipulation}
+.chip.active{background:#111;color:#fff;border-color:#111}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
+.card{background:var(--card);border:1px solid #eceef1;border-radius:16px;padding:12px;margin-bottom:10px}
+
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #f1f2f4}
+.switch-row:last-child{border-bottom:0}
+.switch-row .lab{font-size:14px;font-weight:600}
+.switch-row .sub{font-size:11px;color:var(--muted);margin-top:2px;font-weight:400}
+.switch{width:46px;height:28px;border-radius:999px;background:#cbd2dc;position:relative;cursor:pointer;flex:0 0 auto;transition:.18s;touch-action:manipulation;border:0;padding:0}
+.switch.on{background:#111}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.switch.on::after{left:21px}
+
+/* ---------- модалки ---------- */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:100}
+.modal.hidden{display:none}
+.sheet{width:100%;max-width:520px;background:#fff;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + var(--safe-b));
+  max-height:92dvh;overflow:auto;box-shadow:0 -8px 30px rgba(0,0,0,.18)}
+.sheet h2{margin:0 0 4px;font-size:19px}
+.sheet .sh-sub{color:var(--muted);font-size:12px;margin:0 0 12px}
+.grabber{width:38px;height:4px;border-radius:999px;background:#d6dae0;margin:-6px auto 10px}
+.list{display:flex;flex-direction:column;gap:2px;max-height:56dvh;overflow:auto}
+.list-item{width:100%;border:0;background:transparent;text-align:left;padding:12px 10px;border-radius:12px;font:inherit;cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+.list-item.active{background:#f2f3f5;font-weight:800}
+.list-item .tick{opacity:0;color:var(--muted)}
+.list-item.active .tick{opacity:1;color:#111}
+.size-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px;max-height:56dvh;overflow:auto;padding:2px}
+.size-cell{border:1px solid var(--border);background:#fff;border-radius:10px;padding:11px 0;font:inherit;font-weight:700;cursor:pointer}
+.size-cell.active{background:#111;color:#fff;border-color:#111}
+.segment{display:flex;background:#f2f3f5;border-radius:12px;padding:4px;gap:4px;margin-bottom:12px}
+.segment button{flex:1;border:0;background:transparent;border-radius:10px;padding:10px 6px;font:inherit;font-weight:700;color:var(--muted);cursor:pointer}
+.segment button.active{background:#fff;color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.08)}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tab{flex:1;border:1px solid var(--border);background:#fff;border-radius:12px;padding:10px;cursor:pointer;font:inherit;font-weight:700}
+.tab.active{background:#111;color:#fff;border-color:#111}
+.field{margin:12px 0}
+.field>label{display:block;font-size:12px;color:#475467;margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.inline-range{display:flex;align-items:center;gap:10px}
+.inline-range input[type=number]{width:70px}
+input[type=range]{width:100%;accent-color:#111}
+input[type=number],input[type=text],select{border:1px solid var(--border);border-radius:10px;padding:9px 10px;font:inherit;background:#fff;min-width:0;width:100%}
+.color-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;max-height:34dvh;overflow:auto;padding:2px}
+.color-cell{aspect-ratio:1/1;border-radius:6px;border:1px solid rgba(0,0,0,.12);cursor:pointer;padding:0}
+.color-cell.on{box-shadow:0 0 0 2px #111}
+.cp-preview-row{display:flex;gap:12px;align-items:center;margin-top:12px}
+.cp-preview{width:56px;height:56px;border-radius:14px;border:1px solid rgba(0,0,0,.18);flex:0 0 auto}
+.cp-preview-row input[type=text]{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.hue-bar{position:relative;height:34px;border-radius:12px;background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);
+  touch-action:none;cursor:pointer;border:1px solid rgba(0,0,0,.12)}
+.hue-thumb{position:absolute;top:-5px;left:0;width:14px;height:44px;border:3px solid #fff;border-radius:10px;
+  box-shadow:0 1px 6px rgba(0,0,0,.35);transform:translateX(-50%);pointer-events:none}
+.sat-bar{position:relative;height:34px;border-radius:12px;touch-action:none;cursor:pointer;border:1px solid rgba(0,0,0,.12);background:#ddd}
+.bg-preview{height:118px;border-radius:16px;margin-bottom:12px;border:1px solid rgba(0,0,0,.1);background:#fff;position:relative;overflow:hidden}
+.image-crop{position:relative;width:100%;aspect-ratio:1.586/1;border-radius:16px;border:1px solid rgba(0,0,0,.12);overflow:hidden;background:#111827;touch-action:none;user-select:none}
+.image-crop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center;pointer-events:none;user-select:none;-webkit-user-drag:none}
+.image-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;font-weight:700;background:rgba(0,0,0,.35);pointer-events:none;font-size:14px;text-align:center;padding:12px}
+.stop-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.stop-color{width:44px;height:44px;border-radius:12px;border:1px solid rgba(0,0,0,.18);cursor:pointer;flex:0 0 auto;padding:0}
+.stop-hex{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#344054;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stop-idx{width:20px;font-size:11px;color:var(--muted);font-weight:800;flex:0 0 auto}
+.remove-stop{width:32px;height:32px;border-radius:10px;border:1px solid #eaecf0;background:#fff;cursor:pointer;flex:0 0 auto;font-size:17px;line-height:1}
+.pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pos-grid button{aspect-ratio:1.5/1;border:1px solid var(--border);background:#fff;border-radius:10px;cursor:pointer;display:grid;place-items:center;font-size:14px;color:#475467}
+.pos-grid button.active{background:#111;color:#fff;border-color:#111}
+.field-item{border:1px solid var(--border);border-radius:12px;padding:8px;display:flex;align-items:center;gap:8px;background:#fff}
+.field-item.sel{border-color:#111;box-shadow:0 0 0 1px #111 inset}
+.field-item .fi-text{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.field-item .fi-pos{font-size:11px;color:var(--muted);flex:0 0 auto;max-width:88px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:#fff;cursor:pointer;flex:0 0 auto;
+  font-size:14px;line-height:1;display:grid;place-items:center}
+.field-list{display:flex;flex-direction:column;gap:8px}
+
+/* ---------- предъявление ---------- */
+.present-box{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:14px;margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.present-face{width:min(100%,290px);aspect-ratio:1.586/1;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);position:relative;background:#fff}
+.code-switch{display:flex;gap:8px}
+.code-area{width:100%;min-height:230px;display:grid;place-items:center;background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px}
+.code-area svg,.code-area canvas{max-width:100%;height:auto;display:block}
+.barcode-svg{width:100%!important;max-width:100%!important;height:auto!important}
+.barcode-svg text{display:none!important}
+.present-meta{text-align:center;color:var(--muted);font-size:12px;line-height:1.4}
+.present-actions{display:flex;gap:8px;width:100%}
+.present-actions .btn{flex:1;min-width:0}
+
+/* ---------- сканер ---------- */
+.scanner{position:fixed;inset:0;background:#000;z-index:150;display:flex;flex-direction:column}
+.scanner.hidden{display:none}
+.sc-head{display:flex;align-items:center;gap:10px;padding:calc(10px + var(--safe-t)) 12px 10px;color:#fff}
+.sc-head h2{margin:0;font-size:17px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-head .icon-btn{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:#fff}
+.sc-video-wrap{position:relative;flex:1;overflow:hidden;background:#000;min-height:200px}
+.sc-video-wrap video{width:100%;height:100%;object-fit:cover;background:#000}
+.sc-reticle{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.reticle-box{width:min(72vw,290px);aspect-ratio:1/1;border:3px solid rgba(255,255,255,.9);border-radius:18px;
+  box-shadow:0 0 0 100vmax rgba(0,0,0,.4);position:relative;overflow:hidden}
+.reticle-line{position:absolute;left:6%;right:6%;height:2px;background:var(--err);box-shadow:0 0 10px var(--err);animation:scan 1.7s ease-in-out infinite}
+@keyframes scan{0%,100%{top:8%}50%{top:90%}}
+.sc-status{position:absolute;left:0;right:0;bottom:0;padding:12px;color:#fff;text-align:center;font-size:13px;
+  background:linear-gradient(transparent,rgba(0,0,0,.65));pointer-events:none}
+.sc-controls{display:flex;gap:12px;justify-content:center;align-items:center;padding:12px}
+.sc-controls .round{width:54px;height:54px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);
+  color:#fff;font-size:22px;display:grid;place-items:center;cursor:pointer;touch-action:manipulation}
+.sc-controls .round.shutter{width:68px;height:68px;background:#fff;color:#111;border-color:#fff}
+.sc-controls .round.on{background:var(--ok);border-color:var(--ok)}
+.sc-foot{padding:0 12px calc(14px + var(--safe-b));display:flex;flex-direction:column;gap:8px}
+.sc-foot input{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff}
+.sc-foot input::placeholder{color:rgba(255,255,255,.5)}
+.sc-foot .btn{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff}
+.sc-error{color:#ffb4b4;font-size:12px;text-align:center;min-height:16px}
+
+.toast{position:fixed;left:50%;bottom:calc(92px + var(--safe-b));transform:translateX(-50%);background:#111;color:#fff;
+  padding:10px 15px;border-radius:999px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:300;
+  max-width:calc(100vw - 28px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.toast.show{opacity:.96}
+.banner{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px;margin-bottom:10px;font-size:13px}
+.banner.warn{background:#fff8ec;border-color:#ffe0a8}
+.banner.err{background:#fff1f2;border-color:#f7c9ce}
+.banner .bx{flex:1;min-width:0;line-height:1.35}
+.badge{display:inline-block;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;background:#eef0f3;color:#475467;vertical-align:middle}
+.badge.ok{background:#e6f6ec;color:#0a7a3c}
+.badge.no{background:#f2f3f5;color:#98a2b3}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ КАРТЫ ============ -->
+  <section id="screen-main" class="screen tab active">
+    <header class="topbar">
+      <h1>Мои карты</h1>
+      <button id="btnAddCard" class="icon-btn" aria-label="Добавить">＋</button>
+      <div id="addMenuCard" class="dropdown hidden">
+        <button data-action="add-card">Добавить карту</button>
+        <button data-action="scan-card">Отсканировать камерой</button>
+        <button data-action="photo-card">Добавить по фото из галереи</button>
+        <div class="sep"></div>
+        <button data-action="create-layout">Создать макет</button>
+      </div>
+    </header>
+    <div class="count" id="cardsCount"></div>
+    <div id="cardsGrid" class="grid2"></div>
+  </section>
+
+  <!-- ============ ВИЗИТКИ ============ -->
+  <section id="screen-visits" class="screen tab">
+    <header class="topbar">
+      <h1>Мои визитки</h1>
+      <button id="btnAddVisit" class="icon-btn" aria-label="Добавить">＋</button>
+      <div id="addMenuVisit" class="dropdown hidden">
+        <button data-action="add-visit">Добавить визитку</button>
+        <button data-action="scan-visit">Отсканировать камерой</button>
+        <button data-action="photo-visit">Добавить по фото из галереи</button>
+      </div>
+    </header>
+    <div class="count" id="visitsCount"></div>
+    <div id="visitsGrid" class="grid2"></div>
+  </section>
+
+  <!-- ============ НАСТРОЙКИ ============ -->
+  <section id="screen-settings" class="screen tab">
+    <header class="topbar"><h1>Настройки</h1></header>
+    <div id="settingsBody"></div>
+  </section>
+
+  <!-- ============ РЕДАКТОР КАРТЫ ============ -->
+  <section id="screen-editor-card" class="screen">
+    <header class="topbar">
+      <button class="icon-btn" data-back>←</button>
+      <h1>Редактирование</h1>
+      <button class="icon-btn" id="cBtnInfo" title="Подсказки">?</button>
+    </header>
+    <div class="preview-wrap"><div id="cardPreview" class="card-preview"></div></div>
+
+    <div class="row">
+      <button id="cBtnCategory" class="control-btn compact"><span class="control-label">Категория</span><span id="cCategoryValue" class="control-value">продукты</span></button>
+      <input id="cNameInput" class="control-input" type="text" placeholder="Название карты" />
+    </div>
+
+    <div class="row scroll">
+      <button id="cBtnFont" class="control-btn compact"><span class="control-label">Шрифт</span><span id="cFontValue" class="control-value">System UI</span></button>
+      <button id="cBtnTextColor" class="color-square" title="Цвет надписи" aria-label="Цвет надписи"></button>
+      <button id="cBtnFontSize" class="control-btn compact"><span class="control-label">Размер</span><span id="cSizeValue" class="control-value">20 px</span></button>
+      <button id="cBtnText" class="control-btn compact pill" title="Коротко — вкл/выкл, долго — сетка 3×3"><span class="control-label">Надпись</span><span id="cTextState" class="control-value">вкл</span></button>
+      <button id="cBtnLabel" class="control-btn compact pill" title="Коротко — вкл/выкл, долго — настроить лейбл"><span class="control-label">Лейбл</span><span id="cLabelState" class="control-value">выкл</span></button>
+    </div>
+
+    <p class="section-title">Макет карты</p>
+    <div id="cLayoutChips" class="hscroll"></div>
+
+    <p class="section-title">Цвет рубашки</p>
+    <div id="cShirtPresets" class="hscroll"></div>
+
+    <p class="section-title">Коды карты</p>
+    <div class="card">
+      <div class="switch-row">
+        <div><div class="lab">Второй код</div><div class="sub">QR + штрихкод, переключаемые при предъявлении</div></div>
+        <button id="cSwSecondCode" class="switch" aria-label="Второй код"></button>
+      </div>
+      <div class="field"><label>Основной код</label>
+        <div class="row" style="margin-bottom:6px"><input id="cPrimaryValue" class="control-input" type="text" placeholder="Значение кода" /><button id="cScanPrimary" class="btn small">Камера</button><button id="cPhotoPrimary" class="btn small">Фото</button></div>
+        <select id="cPrimaryFormat"></select>
+      </div>
+      <div id="cSecondaryWrap" class="field hidden"><label>Второй код</label>
+        <div class="row" style="margin-bottom:6px"><input id="cSecondaryValue" class="control-input" type="text" placeholder="Значение второго кода" /><button id="cScanSecondary" class="btn small">Камера</button><button id="cPhotoSecondary" class="btn small">Фото</button></div>
+        <select id="cSecondaryFormat"></select>
+      </div>
+      <p class="hint">Формат определяется автоматически. Расшифровка под кодом не выводится.</p>
+    </div>
+
+    <div class="actions"><button class="btn" data-cancel>Отмена</button><button class="btn primary" data-save>Сохранить</button></div>
+  </section>
+
+  <!-- ============ РЕДАКТОР ВИЗИТКИ ============ -->
+  <section id="screen-editor-visit" class="screen">
+    <header class="topbar"><button class="icon-btn" data-back>←</button><h1>Визитка</h1></header>
+    <div class="preview-wrap">
+      <div id="visitFlipper" class="flipper">
+        <div id="visitFront" class="face"></div>
+        <div id="visitBack" class="face back"></div>
+      </div>
+    </div>
+    <div class="segment" id="visitSideToggle">
+      <button data-side="front" class="active">Лицевая</button>
+      <button data-side="back">Оборотная</button>
+    </div>
+
+    <div id="visitFrontPanel">
+      <div class="row"><input id="vCompanyInput" class="control-input" type="text" placeholder="Название фирмы" /></div>
+      <div class="row scroll">
+        <button id="vBtnFont" class="control-btn compact"><span class="control-label">Шрифт</span><span id="vFontValue" class="control-value">System UI</span></button>
+        <button id="vBtnTextColor" class="color-square" title="Цвет надписи"></button>
+        <button id="vBtnFontSize" class="control-btn compact"><span class="control-label">Размер</span><span id="vSizeValue" class="control-value">22 px</span></button>
+        <button id="vBtnText" class="control-btn compact pill" title="Коротко — вкл/выкл, долго — сетка 3×3"><span class="control-label">Надпись</span><span id="vTextState" class="control-value">вкл</span></button>
+        <button id="vBtnLabel" class="control-btn compact pill" title="Коротко — вкл/выкл, долго — настроить лейбл"><span class="control-label">Лейбл</span><span id="vLabelState" class="control-value">выкл</span></button>
+      </div>
+      <p class="section-title">Фон лицевой стороны</p>
+      <div id="vShirtPresets" class="hscroll"></div>
+    </div>
+
+    <div id="visitBackPanel" class="hidden">
+      <div class="row scroll">
+        <button id="vBtnBackFont" class="control-btn compact"><span class="control-label">Шрифт</span><span id="vBackFontValue" class="control-value">System UI</span></button>
+        <button id="vBtnBackColor" class="color-square" title="Цвет полей"></button>
+        <button id="vBtnBackSize" class="control-btn compact"><span class="control-label">Размер</span><span id="vBackSizeValue" class="control-value">15 px</span></button>
+        <button id="vBtnAddField" class="btn small" style="height:46px">+ поле</button>
+      </div>
+      <p class="section-title">Поля оборота</p>
+      <div id="vFieldList" class="field-list"></div>
+      <p class="hint">Несколько полей в одной зоне идут столбиком и прижаты к верху зоны.</p>
+      <p class="section-title">Фон оборота</p>
+      <div id="vBackShirtPresets" class="hscroll"></div>
+      <p class="section-title">Фото визитки</p>
+      <div class="row">
+        <button id="vBtnBackPhoto" class="btn small" style="flex:1">Фото вместо полей</button>
+        <button id="vBtnBackPhotoClear" class="btn small">Сброс</button>
+      </div>
+      <div id="vPhotoNote" class="hint"></div>
+    </div>
+
+    <div class="actions"><button class="btn" data-cancel>Отмена</button><button class="btn primary" data-save>Сохранить</button></div>
+  </section>
+
+  <!-- ============ ПРЕДЪЯВЛЕНИЕ КАРТЫ ============ -->
+  <section id="screen-present" class="screen tab">
+    <header class="topbar"><button class="icon-btn" data-back>←</button><h1 id="presentTitle">Карта</h1></header>
+    <div class="present-box">
+      <div id="presentFace" class="present-face"></div>
+      <div class="code-switch" id="presentSwitch">
+        <button id="pwFirst" class="chip active">QR-код</button>
+        <button id="pwSecond" class="chip">Штрихкод</button>
+      </div>
+      <div class="code-area" id="codeRender"></div>
+      <div class="present-meta" id="presentMeta"></div>
+      <div class="present-actions">
+        <button id="presentEdit" class="btn">Изменить</button>
+        <button id="presentDelete" class="btn danger">Удалить</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ПРЕДЪЯВЛЕНИЕ ВИЗИТКИ ============ -->
+  <section id="screen-present-visit" class="screen tab">
+    <header class="topbar"><button class="icon-btn" data-back>←</button><h1 id="presentVisitTitle">Визитка</h1></header>
+    <div class="present-box">
+      <div id="presentVisitBack" class="present-face"></div>
+      <div class="present-meta" id="presentVisitMeta"></div>
+      <div class="present-actions">
+        <button id="presentVisitShare" class="btn">Поделиться</button>
+        <button id="presentVisitEdit" class="btn">Изменить</button>
+      </div>
+    </div>
+  </section>
+
+  <nav id="bottomNav" class="bottom-nav">
+    <button class="active" data-screen="screen-main"><i>▣</i>Карты</button>
+    <button data-screen="screen-visits"><i>▤</i>Визитки</button>
+    <button data-screen="screen-settings"><i>⚙</i>Настройки</button>
+  </nav>
+</div>
+
+<!-- ============ МОДАЛКА: ФОН / ГРАДИЕНТ / ИЗОБРАЖЕНИЕ ============ -->
+<div id="backgroundModal" class="modal hidden"><div class="sheet">
+  <div class="grabber"></div>
+  <h2>Фон</h2>
+  <p class="sh-sub">Рубашка карты: сплошной цвет, градиент 1–3 цвета или своё изображение.</p>
+  <div id="bgPreview" class="bg-preview"></div>
+  <div class="segment" id="bgTabs">
+    <button data-tab="solid">Сплошной</button>
+    <button data-tab="gradient">Градиент</button>
+    <button data-tab="image">Изображение</button>
+  </div>
+
+  <div id="bgSolidPanel" class="bg-panel">
+    <div id="solidPresets" class="hscroll"></div>
+    <div style="margin-top:10px"><button id="btnSolidCustom" class="btn block">Выбрать цвет вручную</button></div>
+  </div>
+
+  <div id="bgGradientPanel" class="bg-panel hidden">
+    <div id="gradStops"></div>
+    <div class="row" style="gap:8px"><button id="btnGradAdd" class="btn small" style="flex:1">+ Цвет</button><button id="btnGradSolid" class="btn small" style="flex:1">Сделать сплошным</button></div>
+    <div class="field"><label>Угол поворота</label>
+      <div class="inline-range"><input id="gradAngle" type="range" min="0" max="360" value="90" /><input id="gradAngleNum" type="number" min="0" max="360" value="90" /></div>
+      <div class="row" style="margin-top:6px;gap:6px">
+        <button class="btn small grad-preset" data-a="0">↑ 0°</button><button class="btn small grad-preset" data-a="90">→ 90°</button>
+        <button class="btn small grad-preset" data-a="135">↘ 135°</button><button class="btn small grad-preset" data-a="180">↓ 180°</button>
+        <button class="btn small grad-preset" data-a="270">← 270°</button>
+      </div>
+    </div>
+    <div id="gradMidField" class="field hidden"><label>Положение среднего цвета</label>
+      <div class="inline-range"><input id="gradMid" type="range" min="5" max="95" value="50" /><input id="gradMidNum" type="number" min="5" max="95" value="50" /></div>
+    </div>
+  </div>
+
+  <div id="bgImagePanel" class="bg-panel hidden">
+    <div id="imgCrop" class="image-crop"><img id="imgCropImg" alt="" /><div id="imgEmpty" class="image-empty"><div>Изображение не выбрано</div><div style="font-weight:500;font-size:12px;opacity:.8">Возьми из галереи устройства или сними камерой</div></div></div>
+    <p class="hint">Одним пальцем — двигать. Двумя — масштабировать. Колесо мыши тоже масштабирует.</p>
+    <div class="row" style="margin-top:10px">
+      <button id="btnChooseImage" class="btn small" style="flex:1">Из галереи</button>
+      <button id="btnShootImage" class="btn small" style="flex:1">С камеры</button>
+      <button id="btnRemoveImage" class="btn small">Удалить</button>
+    </div>
+    <div class="row"><button id="btnImageZoomOut" class="btn small" style="width:46px">−</button><button id="btnImageReset" class="btn small" style="flex:1">Сброс кадрирования</button><button id="btnImageZoomIn" class="btn small" style="width:46px">+</button></div>
+  </div>
+
+  <div class="actions"><button id="btnBgCancel" class="btn">Отмена</button><button id="btnBgApply" class="btn primary">Применить</button></div>
+</div></div>
+
+<!-- ============ МОДАЛКА: ВЫБОР ЦВЕТА ============ -->
+<div id="colorModal" class="modal hidden"><div class="sheet">
+  <div class="grabber"></div>
+  <h2>Выбор цвета</h2>
+  <div class="tabs"><button id="tabGrid" class="tab active">Сетка</button><button id="tabSpectrum" class="tab">Полоса</button></div>
+  <div id="panelGrid" class="color-grid"></div>
+  <div id="panelSpectrum" class="hidden">
+    <div class="field"><label>Тон — веди пальцем по полосе</label>
+      <div id="hueBar" class="hue-bar"><div id="hueThumb" class="hue-thumb"></div></div>
+    </div>
+    <div class="field"><label>Насыщенность</label><input id="satRange" type="range" min="0" max="100" value="100" /></div>
+    <div class="field"><label>Яркость (от белого к чёрному)</label><input id="lightRange" type="range" min="0" max="100" value="50" /></div>
+  </div>
+  <div class="cp-preview-row"><div id="cpPreview" class="cp-preview"></div><input id="cpHex" type="text" spellcheck="false" value="#000000" /></div>
+  <div class="actions"><button id="btnColorCancel" class="btn">Отмена</button><button id="btnColorChoose" class="btn primary">Выбрать</button></div>
+</div></div>
+
+<!-- ============ МОДАЛКИ: СПИСКИ ============ -->
+<div id="categoryModal" class="modal hidden"><div class="sheet"><div class="grabber"></div><h2>Категория</h2><div id="categoryList" class="list"></div></div></div>
+<div id="fontModal" class="modal hidden"><div class="sheet"><div class="grabber"></div><h2>Шрифт</h2><div id="fontList" class="list"></div></div></div>
+<div id="sizeModal" class="modal hidden"><div class="sheet"><div class="grabber"></div><h2>Размер шрифта</h2><div id="sizeGrid" class="size-grid"></div></div></div>
+
+<!-- ============ МОДАЛКА: ЛЕЙБЛ ============ -->
+<div id="labelModal" class="modal hidden"><div class="sheet">
+  <div class="grabber"></div>
+  <h2>Лейбл</h2>
+  <p class="sh-sub">Плашка отдельно от рубашки: VIP, −20%, новинка.</p>
+  <div class="switch-row"><div class="lab">Показывать лейбл</div><button id="lmEnabled" class="switch"></button></div>
+  <div class="field"><label>Текст</label><input id="lmText" type="text" placeholder="VIP" maxlength="24" /></div>
+  <div class="field"><label>Позиция</label><div id="lmPosGrid" class="pos-grid"></div></div>
+  <div class="row scroll">
+    <button id="lmBtnBg" class="color-square" title="Фон лейбла"></button>
+    <button id="lmBtnColor" class="color-square" title="Цвет текста"></button>
+    <button id="lmBtnSize" class="control-btn compact"><span class="control-label">Размер</span><span id="lmSizeValue" class="control-value">13 px</span></button>
+  </div>
+  <div class="actions"><button id="lmCancel" class="btn">Отмена</button><button id="lmApply" class="btn primary">Применить</button></div>
+</div></div>
+
+<!-- ============ МОДАЛКА: ПОЛЕ ОБОРОТА ============ -->
+<div id="fieldModal" class="modal hidden"><div class="sheet">
+  <div class="grabber"></div>
+  <h2>Поле оборота</h2>
+  <div class="field"><label>Текст</label><textarea id="fmText" class="control-input" placeholder="Телефон, адрес, должность…"></textarea></div>
+  <div class="field"><label>Позиция</label><div id="fmPosGrid" class="pos-grid"></div></div>
+  <div class="row scroll">
+    <button id="fmBtnFont" class="control-btn compact"><span class="control-label">Шрифт</span><span id="fmFontValue" class="control-value">System UI</span></button>
+    <button id="fmBtnColor" class="color-square" title="Цвет"></button>
+    <button id="fmBtnSize" class="control-btn compact"><span class="control-label">Размер</span><span id="fmSizeValue" class="control-value">15 px</span></button>
+  </div>
+  <div class="actions"><button id="fmDelete" class="btn danger">Удалить</button><button id="fmApply" class="btn primary">Готово</button></div>
+</div></div>
+
+<!-- ============ МОДАЛКА: ДЕЙСТВИЕ С ФОТО ============ -->
+<div id="photoActionModal" class="modal hidden"><div class="sheet">
+  <div class="grabber"></div>
+  <h2>Фото из галереи</h2>
+  <p class="sh-sub" id="paNote"></p>
+  <div id="paThumb" class="bg-preview" style="height:130px;background:#eee center/contain no-repeat"></div>
+  <div id="paFound" class="banner hidden"><div class="bx"></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <button id="paUseCode" class="btn block primary">Считать код с фото</button>
+    <button id="paUseShirt" class="btn block">Поставить фото на рубашку</button>
+    <button id="paBoth" class="btn block hidden">Код + рубашка</button>
+    <button id="paCancel" class="btn block">Отмена</button>
+  </div>
+</div></div>
+
+<!-- ============ СКАНЕР ============ -->
+<div id="scannerModal" class="scanner hidden">
+  <div class="sc-head">
+    <button class="icon-btn" id="scClose">✕</button>
+    <h2 id="scTitle">Сканер</h2>
+    <button class="icon-btn" id="scFromPhoto" title="Декодировать фото из галереи">🖼</button>
+  </div>
+  <div class="sc-video-wrap">
+    <video id="scVideo" playsinline muted></video>
+    <div class="sc-reticle"><div class="reticle-box"><div class="reticle-line"></div></div></div>
+    <div class="sc-status" id="scStatus">Наведите камеру на код</div>
+  </div>
+  <div class="sc-controls">
+    <button class="round" id="scFlip" title="Сменить камеру">⟲</button>
+    <button class="round" id="scTorch" title="Фонарик">🔦</button>
+    <button class="round shutter" id="scShot" title="Снять кадр и распознать">◉</button>
+  </div>
+  <div class="sc-foot">
+    <div class="sc-error" id="scError"></div>
+    <div class="row" style="margin-bottom:0">
+      <input id="scManual" type="text" placeholder="Или введите значение вручную" />
+      <button class="btn small" id="scManualOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ СКРЫТЫЕ INPUT'Ы ВЫБОРА ФАЙЛОВ ============ -->
+<!-- ВАЖНО: у галерейного input НЕТ атрибута capture -> открывается файловый пиктор, а не камера -->
+<input id="galleryInput" type="file" accept="image/*" class="hidden" />
+<input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" />
+
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   CARD — локальный кошелёк карт и визиток. Один файл, без бэкенда.
+   ========================================================================= */
+const $ = (id) => document.getElementById(id);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+/* ---------------------------------- утилиты --------------------------------- */
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+let _seq = 0;
+const uid = () => "id" + (++_seq) + Date.now().toString(36);
+
+function normalizeHex(v) {
+  if (typeof v !== "string") return null;
+  let s = v.trim();
+  if (!s.startsWith("#")) s = "#" + s;
+  if (/^#[0-9a-f]{3}$/i.test(s)) return "#" + s.slice(1).split("").map((c) => c + c).join("").toLowerCase();
+  if (/^#[0-9a-f]{6}$/i.test(s)) return s.toLowerCase();
+  return null;
+}
+function hexToRgb(hex) {
+  const s = normalizeHex(hex) || "#000000";
+  const n = parseInt(s.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  let h = 0, s = 0; const l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360; s = clamp(s, 0, 100) / 100; l = clamp(l, 0, 100) / 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return Math.round(255 * c).toString(16).padStart(2, "0");
+  };
+  return "#" + f(0) + f(8) + f(4);
+}
+function luminance(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+function contrastText(hex) { return luminance(hex) > 0.6 ? "#111111" : "#ffffff"; }
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function toast(msg, ms) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove("show"), ms || 2200);
+}
+function readFileAsDataURL(file) {
+  return new Promise((res, rej) => {
+    const rd = new FileReader();
+    rd.onload = () => res(rd.result);
+    rd.onerror = () => rej(rd.error || new Error("Не удалось прочитать файл"));
+    rd.readAsDataURL(file);
+  });
+}
+/* Сжатие/даунскейл изображения перед записью в localStorage */
+function compressImage(dataUrl, maxDim, quality) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h) return res(dataUrl);
+        const s = Math.min(1, maxDim / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+        const c = document.createElement("canvas");
+        c.width = cw; c.height = ch;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, cw, ch);
+        res(c.toDataURL("image/jpeg", quality));
+      } catch (e) { res(dataUrl); }
+    };
+    img.onerror = () => res(dataUrl);
+    img.src = dataUrl;
+  });
+}
+async function processImageFile(file) {
+  const raw = await readFileAsDataURL(file);
+  if (!DB.settings.compressImages) return raw;
+  return compressImage(raw, 1400, 0.82);
+}
+
+/* ------------------------------- справочники -------------------------------- */
+const POS_LABEL = { tl: "слева сверху", tc: "сверху", tr: "справа сверху", ml: "слева", mc: "центр", mr: "справа", bl: "слева снизу", bc: "снизу", br: "справа снизу" };
+const POS_ICONS = [["tl", "↖"], ["tc", "↑"], ["tr", "↗"], ["ml", "←"], ["mc", "•"], ["mr", "→"], ["bl", "↙"], ["bc", "↓"], ["br", "↗"].map ? [["tl","↖"],["tc","↑"],["tr","↗"],["ml","←"],["mc","•"],["mr","→"],["bl","↙"],["bc","↓"],["br","↘"]] : [];
+const CATEGORIES = ["все", "продукты", "аптеки", "одежда и обувь", "техника", "кафе и рестораны", "транспорт", "связь", "здоровье", "другое"];
+const FONTS = [
+  { value: "system-ui", label: "System UI" },
+  { value: "Arial, sans-serif", label: "Arial" },
+  { value: "Georgia, serif", label: "Georgia" },
+  { value: "'Courier New', monospace", label: "Courier New" },
+  { value: "'Times New Roman', serif", label: "Times New Roman" },
+  { value: "Verdana, sans-serif", label: "Verdana" },
+  { value: "Impact, sans-serif", label: "Impact" },
+  { value: "'Trebuchet MS', sans-serif", label: "Trebuchet MS" }
+];
+const PRESET_COLORS = ["#ffffff", "#f2f3f5", "#ffd400", "#ff8a00", "#d1001f", "#7a001f", "#00a650", "#005baa", "#6f42c1", "#111111", "#000000"];
+
+/* Фирменные рубашки: честная типографика в фирменных цветах.
+   Логотип любой марки можно заменить своим файлом — см. «Стандарт бренда». */
+const BRANDS = [
+  { id: "magnit", name: "магнит", word: "МАГНИТ", shirt: { mode: "solid", colors: ["#e30611"], angle: 0, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "magnit" },
+  { id: "pyaterochka", name: "Пятёрочка", word: "Пятёрочка", shirt: { mode: "solid", colors: ["#d1001f"], angle: 0, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "pyaterochka" },
+  { id: "perekyostok", name: "Перекрёсток", word: "Перекрёсток", shirt: { mode: "solid", colors: ["#1f6fd0"], angle: 0, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "plain" },
+  { id: "lenta", name: "Лента", word: "ЛЕНТА", shirt: { mode: "gradient", colors: ["#009b48", "#f58220"], angle: 135, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "plain" },
+  { id: "antei", name: "Антей", word: "АНТЕЙ", shirt: { mode: "gradient", colors: ["#005baa", "#7fd1ff"], angle: 135, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "plain" },
+  { id: "vkusvill", name: "ВкусВилл", word: "ВкусВилл", shirt: { mode: "solid", colors: ["#5a3fb0"], angle: 0, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "plain" },
+  { id: "metro", name: "METRO", word: "METRO", shirt: { mode: "solid", colors: ["#006db3"], angle: 0, mid: 50, image: null, imageTransform: null }, markColor: "#ffffff", style: "plain" }
+];
+const BRAND_BY_ID = Object.fromEntries(BRANDS.map((b) => [b.id, b]));
+
+/* Форматы кодов: внутреннее имя -> имя BarcodeDetector / подпись / JsBarcode */
+const FORMATS = {
+  qr_code:     { det: "qr_code",     label: "QR-код",      kind: "qr",  js: null },
+  data_matrix: { det: "data_matrix", label: "Data Matrix", kind: "qr",  js: null },
+  aztec:       { det: "aztec",       label: "Aztec",       kind: "qr",  js: null },
+  pdf417:      { det: "pdf417",      label: "PDF417",      kind: "qr",  js: null },
+  code_128:    { det: "code_128",    label: "Code 128",    kind: "bar", js: "CODE128" },
+  code_39:     { det: "code_39",     label: "Code 39",     kind: "bar", js: "CODE39" },
+  ean_13:      { det: "ean_13",      label: "EAN-13",      kind: "bar", js: "EAN13" },
+  ean_8:       { det: "ean_8",       label: "EAN-8",       kind: "bar", js: "EAN8" },
+  upc_a:       { det: "upc_a",       label: "UPC-A",       kind: "bar", js: "UPC" },
+  upc_e:       { det: "upc_e",       label: "UPC-E",       kind: "bar", js: "UPC_E" },
+  itf:         { det: "itf",         label: "ITF",         kind: "bar", js: "ITF" }
+};
+const DET_TO_INTERNAL = Object.fromEntries(Object.entries(FORMATS).map(([k, v]) => [v.det, k]));
+function formatLabel(f) { return (FORMATS[f] && FORMATS[f].label) || f || "Код"; }
+function formatKind(f) { return (FORMATS[f] && FORMATS[f].kind) || "qr"; }
+
+/* ---------------------------------- хранилище -------------------------------- */
+const LS_KEY = "card_wallet_v2";
+function defaultSettings() {
+  return {
+    preferBack: true, torchDefault: false,
+    formats: ["qr_code", "data_matrix", "aztec", "pdf417", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf"],
+    autoSave: true, compressImages: true, storageLimitMB: 5,
+    brandStandards: {}, brightenOnPresent: true, keepAwake: true
+  };
+}
+function defaultLabel() { return { enabled: false, text: "VIP", position: "tr", bg: "#111111", color: "#ffffff", fontSize: 13 }; }
+function defaultShirt() { return normShirt({ mode: "gradient", colors: ["#d1001f", "#ffffff"], angle: 135, mid: 50, image: null }); }
+function defaultCard() {
+  return {
+    id: uid(), createdAt: Date.now(), name: "Моя карта", category: "продукты", brandId: null,
+    font: "system-ui", fontSize: 20, textColor: "#ffffff", textEnabled: true, textPosition: "mc",
+    label: defaultLabel(), shirt: defaultShirt(),
+    primaryCode: { value: "", format: "qr_code" }, secondCodeEnabled: false, secondaryCode: { value: "", format: "code_128" }
+  };
+}
+function defaultVisit() {
+  return {
+    id: uid(), createdAt: Date.now(), company: "Моя фирма",
+    front: { font: "system-ui", fontSize: 22, textColor: "#ffffff", textEnabled: true, textPosition: "mc", label: defaultLabel(), shirt: normShirt({ mode: "solid", colors: ["#111111"], angle: 0, mid: 50, image: null }) },
+    back: { font: "system-ui", fontSize: 15, color: "#111111", fields: [], shirt: normShirt({ mode: "solid", colors: ["#f2f3f5"], angle: 0, mid: 50, image: null }), photo: null }
+  };
+}
+let DB = { cards: [], visits: [], settings: defaultSettings() };
+
+function storageBytes() { try { return (localStorage.getItem(LS_KEY) || "").length; } catch (e) { return 0; } }
+function saveDB() {
+  if (!DB.settings.autoSave && saveDB._draftOnly) return;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(DB));
+    return true;
+  } catch (e) {
+    const mb = (storageBytes() / 1048576).toFixed(2);
+    alert("Не удалось сохранить: локальное хранилище переполнено (сейчас ~" + mb + " МБ).\n\nУменьшите размер изображений рубашек или отключите их, затем повторите.");
+    return false;
+  }
+}
+function loadDB() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const p = JSON.parse(raw);
+    DB.cards = Array.isArray(p.cards) ? p.cards : [];
+    DB.visits = Array.isArray(p.visits) ? p.visits : [];
+    DB.settings = Object.assign(defaultSettings(), p.settings || {});
+    DB.settings.brandStandards = Object.assign({}, (p.settings && p.settings.brandStandards) || {});
+    DB.cards.forEach(migrateCard);
+    DB.visits.forEach(migrateVisit);
+    return true;
+  } catch (e) { console.warn("load failed", e); return false; }
+}
+function migrateCard(c) {
+  c.id = c.id || uid();
+  c.category = c.category || "другое";
+  c.font = c.font || "system-ui";
+  c.fontSize = clamp(Number(c.fontSize) || 20, 12, 42);
+  c.textColor = normalizeHex(c.textColor) || "#ffffff";
+  c.textEnabled = c.textEnabled !== false;
+  c.textPosition = c.textPosition || "mc";
+  c.label = Object.assign(defaultLabel(), c.label || {});
+  c.shirt = normShirt(c.shirt || {});
+  c.primaryCode = Object.assign({ value: "", format: "qr_code" }, c.primaryCode || {});
+  c.secondCodeEnabled = !!c.secondCodeEnabled;
+  c.secondaryCode = Object.assign({ value: "", format: "code_128" }, c.secondaryCode || {});
+  if (!FORMATS[c.primaryCode.format]) c.primaryCode.format = "qr_code";
+  if (!FORMATS[c.secondaryCode.format]) c.secondaryCode.format = "code_128";
+  return c;
+}
+function migrateVisit(v) {
+  v.id = v.id || uid();
+  v.company = v.company || "Визитка";
+  v.front = Object.assign({ font: "system-ui", fontSize: 22, textColor: "#ffffff", textEnabled: true, textPosition: "mc", label: defaultLabel(), shirt: normShirt({ mode: "solid", colors: ["#111111"] }) }, v.front || {});
+  v.front.label = Object.assign(defaultLabel(), v.front.label || {});
+  v.front.shirt = normShirt(v.front.shirt || {});
+  v.back = Object.assign({ font: "system-ui", fontSize: 15, color: "#111111", fields: [], shirt: normShirt({ mode: "solid", colors: ["#f2f3f5"] }), photo: null }, v.back || {});
+  v.back.shirt = normShirt(v.back.shirt || {});
+  v.back.fields = (v.back.fields || []).map((f) => ({
+    id: f.id || uid(), text: f.text || "", position: f.position || "ml",
+    font: f.font || v.back.font, fontSize: clamp(Number(f.fontSize) || v.back.fontSize, 10, 42),
+    color: normalizeHex(f.color) || v.back.color
+  }));
+  return v;
+}
+
+/* ---------------------------------- рубашки ---------------------------------- */
+function clampT(t) {
+  const sc = clamp(Number(t && t.scale) || 1, 1, 6);
+  const m = (sc - 1) / 2;
+  return { scale: sc, nx: clamp(Number(t && t.nx) || 0, -m, m), ny: clamp(Number(t && t.ny) || 0, -m, m) };
+}
+function normShirt(sh) {
+  sh = sh || {};
+  if (!Array.isArray(sh.colors) || !sh.colors.length) sh.colors = ["#ffffff"];
+  sh.colors = sh.colors.slice(0, 3).map((c) => normalizeHex(c) || "#000000");
+  sh.angle = clamp(Number(sh.angle) || 0, 0, 360);
+  sh.mid = clamp(Number(sh.mid) || 50, 5, 95);
+  if (sh.image) sh.imageTransform = clampT(sh.imageTransform || { scale: 1, nx: 0, ny: 0 });
+  else { sh.image = null; sh.imageTransform = null; }
+  if (!sh.mode) sh.mode = sh.colors.length > 1 ? "gradient" : "solid";
+  if (sh.mode === "image" && !sh.image) sh.mode = sh.colors.length > 1 ? "gradient" : "solid";
+  if (sh.mode === "solid") sh.colors = [sh.colors[0] || "#ffffff"];
+  if (sh.mode === "gradient" && sh.colors.length < 2) sh.colors.push(sh.colors[0] || "#000000");
+  return sh;
+}
+function shirtCss(sh) {
+  const s = normShirt(clone(sh));
+  if (s.colors.length === 1 || s.mode === "solid") return s.colors[0];
+  if (s.colors.length === 2) return "linear-gradient(" + s.angle + "deg," + s.colors[0] + " 0%," + s.colors[1] + " 100%)";
+  return "linear-gradient(" + s.angle + "deg," + s.colors[0] + " 0%," + s.colors[1] + " " + s.mid + "%," + s.colors[2] + " 100%)";
+}
+function paintShirt(el, sh) {
+  const s = normShirt(clone(sh));
+  let layer = Array.from(el.children).find((c) => c.classList && c.classList.contains("card-image-layer"));
+  if (s.mode === "image" && s.image) {
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.className = "card-image-layer";
+      const im = document.createElement("img");
+      im.className = "card-image"; im.alt = "";
+      layer.appendChild(im);
+      el.insertBefore(layer, el.firstChild);
+    }
+    const im = layer.querySelector("img");
+    if (im && im.getAttribute("src") !== s.image) im.src = s.image;
+    const t = s.imageTransform || { scale: 1, nx: 0, ny: 0 };
+    if (im) im.style.transform = "translate(" + (t.nx * 100) + "%," + (t.ny * 100) + "%) scale(" + t.scale + ")";
+    el.style.background = s.colors[0] || "#fff";
+  } else {
+    if (layer) layer.remove();
+    el.style.background = shirtCss(s);
+  }
+  return s;
+}
+function sameShirt(a, b) {
+  try {
+    return a.mode === b.mode && (a.colors || []).join() === (b.colors || []).join() &&
+      Number(a.angle) === Number(b.angle) && Number(a.mid) === Number(b.mid) &&
+      (a.image || null) === (b.image || null);
+  } catch (e) { return false; }
+}
+function fontLabel(v) { const f = FONTS.find((x) => x.value === v); return f ? f.label : (v || "System UI"); }
+
+/* Фирменный знак поверх рубашки (когда изображение не загружено) */
+function brandMarkHTML(brandId, scalePx) {
+  const b = BRAND_BY_ID[brandId];
+  if (!b) return "";
+  const fs = scalePx || 20;
+  if (b.style === "pyaterochka") {
+    return '<div class="brand-mark">' +
+      '<svg class="star" viewBox="0 0 24 24" fill="' + b.markColor + '" aria-hidden="true"><path d="M12 1.6l3.1 6.9 7.4.8-5.6 5 1.6 7.3L12 17.9 5.5 21.6 7.1 14.3 1.5 9.3l7.4-.8z"/></svg>' +
+      '<div class="wm" style="color:' + b.markColor + ';font-size:' + fs + 'px;font-style:italic;letter-spacing:-.03em">' + escapeHtml(b.word) + '</div></div>';
+  }
+  if (b.style === "magnit") {
+    return '<div class="brand-mark">' +
+      '<svg viewBox="0 0 120 74" style="width:52%;max-width:170px" fill="none" aria-hidden="true">' +
+      '<path d="M8 10h58" stroke="' + b.markColor + '" stroke-width="7" stroke-linecap="round"/>' +
+      '<path d="M22 64h58c14 0 20-8 20-18" stroke="' + b.markColor + '" stroke-width="7" stroke-linecap="round"/>' +
+      '<path d="M34 22v30M34 22l16 20 16-20v30" stroke="' + b.markColor + '" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>' +
+      '<div class="wm" style="color:' + b.markColor + ';font-size:' + (fs * 0.72) + 'px;letter-spacing:.14em">' + escapeHtml(b.word) + '</div></div>';
+  }
+  return '<div class="brand-mark"><div class="wm" style="color:' + b.markColor + ';font-size:' + fs + 'px">' + escapeHtml(b.word) + '</div></div>';
+}
+
+/* --------------------------------- рендер лиц -------------------------------- */
+function renderCardFace(el, card, opts) {
+  opts = opts || {};
+  el.innerHTML = "";
+  const s = paintShirt(el, card.shirt);
+  if (s.mode !== "image" || !s.image) {
+    const bid = card.brandId && !card.brandHasCustomShirt ? card.brandId : null;
+    if (bid || (card.brandId && BRAND_BY_ID[card.brandId])) {
+      const holder = document.createElement("div");
+      holder.innerHTML = brandMarkHTML(card.brandId, opts.markSize || 20);
+      while (holder.firstChild) el.appendChild(holder.firstChild);
+    }
+  }
+  const text = document.createElement("div");
+  text.className = "card-text pos-" + card.textPosition;
+  text.textContent = card.name || "";
+  text.style.color = card.textColor;
+  text.style.fontSize = (opts.textScale ? card.fontSize * opts.textScale : card.fontSize) + "px";
+  text.style.fontFamily = card.font;
+  text.style.display = card.textEnabled ? "flex" : "none";
+  el.appendChild(text);
+  appendLabel(el, card.label, opts.textScale);
+}
+function appendLabel(el, label, scale) {
+  if (!label || !label.enabled || !label.text) return;
+  const c = document.createElement("div");
+  c.className = "label-chip lbl-" + label.position;
+  c.textContent = label.text;
+  c.style.background = label.bg;
+  c.style.color = label.color;
+  c.style.fontSize = (scale ? label.fontSize * scale : label.fontSize) + "px";
+  el.appendChild(c);
+}
+function renderVisitFace(el, visit, side, opts) {
+  opts = opts || {};
+  el.innerHTML = "";
+  const cfg = side === "front" ? visit.front : visit.back;
+  if (side === "back" && visit.back.photo) {
+    const p = document.createElement("div");
+    p.style.cssText = 'position:absolute;inset:0;background:center/cover no-repeat url("' + visit.back.photo + '")';
+    el.appendChild(p);
+    return;
+  }
+  const s = paintShirt(el, cfg.shirt);
+  if (side === "front") {
+    if ((s.mode !== "image" || !s.image) && visit.brandId) {
+      const h = document.createElement("div");
+      h.innerHTML = brandMarkHTML(visit.brandId, opts.markSize || 20);
+      while (h.firstChild) el.appendChild(h.firstChild);
+    }
+    const t = document.createElement("div");
+    t.className = "card-text pos-" + cfg.textPosition;
+    t.textContent = visit.company || "";
+    t.style.color = cfg.textColor;
+    t.style.fontSize = (opts.textScale ? cfg.fontSize * opts.textScale : cfg.fontSize) + "px";
+    t.style.fontFamily = cfg.font;
+    t.style.display = cfg.textEnabled ? "flex" : "none";
+    el.appendChild(t);
+    appendLabel(el, cfg.label, opts.textScale);
+  } else {
+    const layer = document.createElement("div");
+    layer.className = "fields-layer";
+    const zones = {};
+    Object.keys(POS_LABEL).forEach((z) => {
+      const d = document.createElement("div");
+      d.className = "zone zone-" + z;
+      zones[z] = d; layer.appendChild(d);
+    });
+    visit.back.fields.forEach((f) => {
+      const d = document.createElement("div");
+      d.className = "field-line";
+      d.textContent = f.text || "";
+      d.style.color = f.color || visit.back.color;
+      d.style.fontSize = (opts.textScale ? (f.fontSize || visit.back.fontSize) * opts.textScale : (f.fontSize || visit.back.fontSize)) + "px";
+      d.style.fontFamily = f.font || visit.back.font;
+      (zones[f.position] || zones.ml).appendChild(d);
+    });
+    el.appendChild(layer);
+    appendLabel(el, visit.back.label, opts.textScale);
+  }
+}
+
+/* -------------------------------- навигация --------------------------------- */
+const TAB_SCREENS = ["screen-main", "screen-visits", "screen-settings"];
+let lastTab = "screen-main";
+function show(id) {
+  $$(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
+  $("bottomNav").style.display = TAB_SCREENS.includes(id) ? "flex" : "none";
+  $$("#bottomNav button").forEach((b) => b.classList.toggle("active", b.dataset.screen === id));
+  closeMenus();
+  clearPlacement();
+  if (TAB_SCREENS.includes(id)) lastTab = id;
+  if (id === "screen-present" || id === "screen-present-visit") enterPresentMode();
+  else exitPresentMode();
+  window.scrollTo(0, 0);
+}
+function closeMenus() { $("addMenuCard").classList.add("hidden"); $("addMenuVisit").classList.add("hidden"); }
+
+/* --------------------------- сетка 3×3 (оверлей на превью) -------------------- */
+function clearPlacement() { const o = document.querySelector(".placement-overlay"); if (o) o.remove(); }
+function openPlacement(previewEl, currentPos, cb) {
+  clearPlacement();
+  const ov = document.createElement("div");
+  ov.className = "placement-overlay";
+  POS_ICONS.forEach(([p, ic]) => {
+    const b = document.createElement("button");
+    b.className = "placement-cell" + (p === currentPos ? " active" : "");
+    b.textContent = ic; b.dataset.pos = p;
+    b.setAttribute("aria-label", POS_LABEL[p]);
+    ov.appendChild(b);
+  });
+  previewEl.appendChild(ov);
+  ov.addEventListener("click", (e) => {
+    const c = e.target.closest(".placement-cell");
+    if (c) { cb(c.dataset.pos); clearPlacement(); }
+    else if (e.target === ov) clearPlacement();
+  });
+}
+function buildPosGrid(host, current, cb) {
+  host.innerHTML = "";
+  POS_ICONS.forEach(([p, ic]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = p === current ? "active" : "";
+    b.textContent = ic;
+    b.title = POS_LABEL[p];
+    b.onclick = () => { $$("button", host).forEach((x) => x.classList.remove("active")); b.classList.add("active"); cb(p); };
+    host.appendChild(b);
+  });
+}
+/* короткое / долгое нажатие */
+function longPress(el, shortFn, longFn, ms) {
+  let t = null, did = false;
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  el.addEventListener("pointerdown", () => {
+    did = false;
+    t = setTimeout(() => { did = true; longFn(); }, ms || 480);
+  });
+  const end = (e) => {
+    if (t) { clearTimeout(t); t = null; }
+    if (!did && e.type === "pointerup") shortFn();
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  el.addEventListener("pointerleave", end);
+}
+
+/* ------------------------------- пикеры (модалки) ----------------------------- */
+let catCb = null, fontCb = null, sizeCb = null, colorCb = null;
+let cp = { h: 0, s: 0, l: 100, sel: "#ffffff" };
+
+function openCategoryPicker(cur, cb) {
+  catCb = cb;
+  $("categoryList").innerHTML = CATEGORIES.map((c) =>
+    '<button class="list-item' + (c === cur ? " active" : "") + '" type="button" data-cat="' + escapeHtml(c) + '"><span>' + escapeHtml(c) + '</span><span class="tick">✓</span></button>'
+  ).join("");
+  $("categoryModal").classList.remove("hidden");
+}
+function openFontPicker(cur, cb) {
+  fontCb = cb;
+  $("fontList").innerHTML = FONTS.map((f) =>
+    '<button class="list-item' + (f.value === cur ? " active" : "") + '" type="button" data-font="' + escapeHtml(f.value) + '"><span style="font-family:' + f.value + '">' + escapeHtml(f.label) + '</span><span class="tick">✓</span></button>'
+  ).join("");
+  $("fontModal").classList.remove("hidden");
+}
+function openSizePicker(cur, cb, min, max) {
+  sizeCb = cb;
+  min = min || 12; max = max || 42;
+  let h = "";
+  for (let s = min; s <= max; s++) h += '<button class="size-cell' + (s === cur ? " active" : "") + '" type="button" data-size="' + s + '">' + s + "</button>";
+  $("sizeGrid").innerHTML = h;
+  $("sizeModal").classList.remove("hidden");
+}
+function syncCP(withInputs) {
+  $("cpPreview").style.background = cp.sel;
+  $("cpHex").value = cp.sel;
+  $("hueThumb").style.left = (cp.h / 360 * 100) + "%";
+  const satBar = $("satRange"), lg = $("lightRange");
+  satBar.style.background = "linear-gradient(to right," + hslToHex(cp.h, 0, cp.l) + "," + hslToHex(cp.h, 100, cp.l) + ")";
+  lg.style.background = "linear-gradient(to right,#000," + hslToHex(cp.h, cp.s, 50) + ",#fff)";
+  if (withInputs) { satBar.value = cp.s; lg.value = cp.l; }
+  $$("#panelGrid .color-cell").forEach((c) => c.classList.toggle("on", c.dataset.hex === cp.sel));
+}
+function openColorPicker(hex, cb) {
+  colorCb = cb;
+  const s = normalizeHex(hex) || "#000000";
+  const rgb = hexToRgb(s);
+  const h = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  cp = { h: h.h, s: h.s, l: h.l, sel: s };
+  syncCP(true);
+  $("colorModal").classList.remove("hidden");
+}
+function buildColorGrid() {
+  const rows = [
+    { l: 100, s: 0 }, { l: 93, s: 12 }, { l: 80, s: 55 }, { l: 62, s: 78 }, { l: 45, s: 78 }, { l: 28, s: 70 }, { l: 12, s: 0 }
+  ];
+  let h = "";
+  rows.forEach((row, ri) => {
+    for (let c = 0; c < 12; c++) {
+      let hh = c * 30, ss = row.s, ll = row.l;
+      if (ri === 0) { ss = 0; ll = 100; }
+      if (ri === 1) { ss = 0; ll = 96 - c * 2; }
+      if (ri === rows.length - 1) { ss = 0; ll = 10 - c * 0.8; }
+      if (ri === 0 && c === 0) { ss = 0; ll = 100; }
+      const hx = hslToHex(hh, ss, ll);
+      h += '<button class="color-cell" type="button" data-h="' + hh + '" data-s="' + Math.round(ss) + '" data-l="' + Math.round(ll) + '" data-hex="' + hx + '" style="background:' + hx + '" title="' + hx + '"></button>';
+    }
+  });
+  $("panelGrid").innerHTML = h;
+}
+
+/* ---------------------- фон: сплошной / градиент / изображение ---------------- */
+let tempShirt = null, bgTab = "solid", bgCb = null;
+const imgP = new Map();
+let imgDrag = null, imgPinch = null;
+
+function openBackground(shirt, cb, startTab) {
+  tempShirt = normShirt(clone(shirt || {}));
+  bgCb = cb;
+  bgTab = startTab || tempShirt.mode || "solid";
+  if (bgTab === "image" && !tempShirt.image) bgTab = tempShirt.colors.length > 1 ? "gradient" : "solid";
+  renderBG();
+  $("backgroundModal").classList.remove("hidden");
+}
+function closeBG() {
+  $("backgroundModal").classList.add("hidden");
+  tempShirt = null; bgCb = null;
+  imgP.clear(); imgDrag = null; imgPinch = null;
+}
+function setBGTab(t) {
+  bgTab = t;
+  if (t === "solid") { tempShirt.mode = "solid"; if (!tempShirt.colors.length) tempShirt.colors = ["#ffffff"]; }
+  if (t === "gradient") {
+    tempShirt.mode = "gradient";
+    if (tempShirt.colors.length < 2) tempShirt.colors.push(tempShirt.colors[0] || "#000000");
+    tempShirt.colors = tempShirt.colors.slice(0, 3);
+  }
+  if (t === "image") tempShirt.mode = "image";
+  renderBG();
+}
+function renderBG() {
+  if (!tempShirt) return;
+  normShirt(tempShirt);
+  $$("#bgTabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === bgTab));
+  $("bgSolidPanel").classList.toggle("hidden", bgTab !== "solid");
+  $("bgGradientPanel").classList.toggle("hidden", bgTab !== "gradient");
+  $("bgImagePanel").classList.toggle("hidden", bgTab !== "image");
+  paintShirt($("bgPreview"), tempShirt);
+  $$("#solidPresets [data-sc]").forEach((b) => b.classList.toggle("on", tempShirt.mode === "solid" && tempShirt.colors[0] === b.dataset.sc));
+  renderStops();
+  const has = !!tempShirt.image;
+  if (has) { $("imgCropImg").src = tempShirt.image; $("imgEmpty").style.display = "none"; applyCrop(); }
+  else { $("imgCropImg").removeAttribute("src"); $("imgEmpty").style.display = "flex"; }
+  ["btnRemoveImage", "btnImageReset", "btnImageZoomIn", "btnImageZoomOut"].forEach((id) => { $(id).disabled = !has; });
+}
+function renderStops() {
+  $("gradStops").innerHTML = tempShirt.colors.map((c, i) =>
+    '<div class="stop-row"><span class="stop-idx">' + (i + 1) + '</span>' +
+    '<button class="stop-color" type="button" data-sc="' + i + '" style="background:' + c + '" aria-label="Цвет ' + (i + 1) + '"></button>' +
+    '<div class="stop-hex">' + c + "</div>" +
+    (tempShirt.colors.length > 1 ? '<button class="remove-stop" type="button" data-rm="' + i + '" aria-label="Убрать цвет">×</button>' : "") +
+    "</div>"
+  ).join("");
+  $("btnGradAdd").disabled = tempShirt.colors.length >= 3;
+  $("gradAngle").value = tempShirt.angle;
+  $("gradAngleNum").value = tempShirt.angle;
+  const three = tempShirt.colors.length === 3;
+  $("gradMidField").classList.toggle("hidden", !three);
+  $("gradMid").value = tempShirt.mid;
+  $("gradMidNum").value = tempShirt.mid;
+}
+function applyCrop() {
+  if (!tempShirt || !tempShirt.image) return;
+  const t = tempShirt.imageTransform || { scale: 1, nx: 0, ny: 0 };
+  $("imgCropImg").style.transform = "translate(" + (t.nx * 100) + "%," + (t.ny * 100) + "%) scale(" + t.scale + ")";
+}
+function setCrop(t) {
+  if (!tempShirt) return;
+  tempShirt.imageTransform = clampT(t);
+  applyCrop();
+  paintShirt($("bgPreview"), tempShirt);
+}
+function pinchData() {
+  const p = Array.from(imgP.values());
+  if (p.length < 2) return null;
+  const r = $("imgCrop").getBoundingClientRect();
+  return { dist: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), cx: (p[0].x + p[1].x) / 2 - r.left - r.width / 2, cy: (p[0].y + p[1].y) / 2 - r.top - r.height / 2, rect: r };
+}
+function zoomFactor(f) {
+  if (!tempShirt || !tempShirt.image) return;
+  const c = tempShirt.imageTransform || { scale: 1, nx: 0, ny: 0 };
+  const ns = clamp(c.scale * f, 1, 6);
+  setCrop({ scale: ns, nx: c.nx * (ns / c.scale), ny: c.ny * (ns / c.scale) });
+}
+
+/* ---------------- выбор файла: ГАЛЕРЕЯ (без capture) vs КАМЕРА ---------------- */
+let fileCb = null;
+function pickImage(opts) {
+  // opts: {source:'gallery'|'camera', cb}
+  fileCb = opts.cb;
+  const input = opts.source === "camera" ? $("cameraInput") : $("galleryInput");
+  input.value = "";
+  if (opts.source !== "camera" && typeof input.showPicker === "function") {
+    try { input.showPicker({ startIn: "pictures" }); return; } catch (e) { /* расхождение жеста/нет поддержки -> fallback */ }
+    try { input.showPicker(); return; } catch (e) { }
+  }
+  input.click();
+}
+async function onImagePicked(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  const cb = fileCb; fileCb = null;
+  if (!file || !cb) return;
+  try {
+    const dataUrl = await processImageFile(file);
+    cb(dataUrl, file);
+  } catch (err) { toast("Не удалось прочитать фото"); }
+}
+
+/* ---------------------------------- лейбл ----------------------------------- */
+let lmTemp = null, lmCb = null;
+function openLabel(label, cb) {
+  lmTemp = clone(label); lmCb = cb;
+  renderLabel();
+  $("labelModal").classList.remove("hidden");
+}
+function renderLabel() {
+  $("lmEnabled").classList.toggle("on", !!lmTemp.enabled);
+  $("lmText").value = lmTemp.text || "";
+  $("lmBtnBg").style.background = lmTemp.bg;
+  $("lmBtnColor").style.background = lmTemp.color;
+  $("lmSizeValue").textContent = lmTemp.fontSize + " px";
+  buildPosGrid($("lmPosGrid"), lmTemp.position, (p) => { lmTemp.position = p; });
+}
+
+/* -------------------------------- поля визитки ------------------------------- */
+let fmTemp = null, fmCb = null;
+function openField(field, cb) {
+  fmTemp = clone(field); fmCb = cb;
+  renderField();
+  $("fieldModal").classList.remove("hidden");
+}
+function renderField() {
+  $("fmText").value = fmTemp.text || "";
+  $("fmFontValue").textContent = fontLabel(fmTemp.font);
+  $("fmBtnColor").style.background = fmTemp.color;
+  $("fmSizeValue").textContent = fmTemp.fontSize + " px";
+  buildPosGrid($("fmPosGrid"), fmTemp.position, (p) => { fmTemp.position = p; });
+}
+
+/* =============================== РЕДАКТОР КАРТЫ ============================== */
+let editCard = null;
+function fillFormatSelect(sel, cur) {
+  sel.innerHTML = Object.keys(FORMATS).map((f) =>
+    '<option value="' + f + '"' + (f === cur ? " selected" : "") + ">" + escapeHtml(FORMATS[f].label) + "</option>"
+  ).join("");
+}
+function openCardEditor(card) {
+  editCard = migrateCard(clone(card));
+  renderCardEditor();
+  show("screen-editor-card");
+}
+function renderCardEditor() {
+  if (!editCard) return;
+  renderCardFace($("cardPreview"), editCard, { markSize: 22 });
+  $("cCategoryValue").textContent = editCard.category;
+  $("cNameInput").value = editCard.name || "";
+  $("cFontValue").textContent = fontLabel(editCard.font);
+  $("cSizeValue").textContent = editCard.fontSize + " px";
+  $("cTextState").textContent = editCard.textEnabled ? "вкл" : "выкл";
+  $("cLabelState").textContent = editCard.label.enabled ? "вкл" : "выкл";
+  $("cBtnTextColor").style.background = editCard.textColor;
+  buildLayoutChips($("cLayoutChips"), editCard);
+  buildShirtPresets($("cShirtPresets"), editCard);
+  $("cSwSecondCode").classList.toggle("on", !!editCard.secondCodeEnabled);
+  $("cSecondaryWrap").classList.toggle("hidden", !editCard.secondCodeEnabled);
+  $("cPrimaryValue").value = editCard.primaryCode.value || "";
+  fillFormatSelect($("cPrimaryFormat"), editCard.primaryCode.format);
+  $("cSecondaryValue").value = editCard.secondaryCode.value || "";
+  fillFormatSelect($("cSecondaryFormat"), editCard.secondaryCode.format);
+}
+function buildLayoutChips(host, card) {
+  host.innerHTML = "";
+  const plus = document.createElement("button");
+  plus.className = "chip"; plus.type = "button"; plus.textContent = "+";
+  plus.title = "Свой макет";
+  plus.onclick = () => openBackground(card.shirt, (s) => { card.shirt = normShirt(s); card.brandId = null; renderCardEditor(); }, "gradient");
+  host.appendChild(plus);
+  BRANDS.forEach((b) => {
+    const std = DB.settings.brandStandards[b.id];
+    const shirt = std || b.shirt;
+    const btn = document.createElement("button");
+    btn.className = "chip" + (card.brandId === b.id ? " active" : "");
+    btn.type = "button"; btn.textContent = b.name;
+    btn.onclick = () => {
+      card.brandId = b.id;
+      card.brandHasCustomShirt = !!std;
+      card.shirt = normShirt(clone(shirt));
+      if (!card.name || card.name === "Моя карта") card.name = b.name;
+      renderCardEditor();
+    };
+    host.appendChild(btn);
+    const logo = document.createElement("button");
+    logo.className = "color-square";
+    logo.type = "button";
+    logo.title = "Стандарт бренда: своё изображение (" + b.name + ")";
+    logo.style.background = std ? 'center/cover no-repeat url("' + std.image + '")' : shirtCss(shirt);
+    logo.onclick = () => {
+      openBackground(std || shirt, async (s) => {
+        const n = normShirt(s);
+        if (n.mode === "image" && n.image) DB.settings.brandStandards[b.id] = n;
+        else delete DB.settings.brandStandards[b.id];
+        saveDB();
+        if (card.brandId === b.id) { card.shirt = normShirt(clone(DB.settings.brandStandards[b.id] || b.shirt)); card.brandHasCustomShirt = !!DB.settings.brandStandards[b.id]; }
+        renderCardEditor();
+        toast("Стандарт бренда обновлён");
+      }, n2 => n2.mode);
+    };
+    host.appendChild(logo);
+  });
+}
+function buildShirtPresets(host, card) {
+  host.innerHTML = "";
+  const plus = document.createElement("button");
+  plus.className = "color-square plus";
+  plus.type = "button";
+  plus.title = "Свой вариант: градиент / сплошной / изображение";
+  plus.innerHTML = '<span class="plus-badge">+</span>';
+  plus.style.background = (card.shirt.mode === "image" && card.shirt.image) ? 'center/cover no-repeat url("' + card.shirt.image + '")' : shirtCss(card.shirt);
+  plus.onclick = () => openBackground(card.shirt, (s) => {
+    card.shirt = normShirt(s);
+    card.brandId = null;
+    card.brandHasCustomShirt = false;
+    renderCardEditor();
+  });
+  host.appendChild(plus);
+  PRESET_COLORS.forEach((col) => {
+    const b = document.createElement("button");
+    b.className = "color-square" + (card.shirt.mode === "solid" && card.shirt.colors[0] === col ? " on" : "");
+    b.type = "button"; b.style.background = col; b.title = col;
+    b.onclick = () => {
+      card.shirt = normShirt({ mode: "solid", colors: [col], angle: card.shirt.angle || 90, mid: card.shirt.mid || 50, image: null });
+      card.brandId = null;
+      renderCardEditor();
+    };
+    host.appendChild(b);
+  });
+}
+function commitCard(silent) {
+  if (!editCard) return;
+  const i = DB.cards.findIndex((c) => c.id === editCard.id);
+  if (i >= 0) DB.cards[i] = editCard; else DB.cards.push(editCard);
+  const ok = saveDB();
+  renderMain();
+  if (!silent) toast(ok ? "Карта сохранена" : "Ошибка сохранения");
+  return ok;
+}
+
+/* ============================== РЕДАКТОР ВИЗИТКИ ============================= */
+let editVisit = null, visitSide = "front", selectedFieldId = null;
+function openVisitEditor(visit) {
+  editVisit = migrateVisit(clone(visit));
+  visitSide = "front"; selectedFieldId = null;
+  renderVisitEditor();
+  show("screen-editor-visit");
+}
+function setVisitSide(side) {
+  visitSide = side;
+  $("visitFlipper").classList.toggle("flipped", side === "back");
+  $$("#visitSideToggle button").forEach((b) => b.classList.toggle("active", b.dataset.side === side));
+  $("visitFrontPanel").classList.toggle("hidden", side !== "front");
+  $("visitBackPanel").classList.toggle("hidden", side !== "back");
+}
+function renderVisitEditor() {
+  if (!editVisit) return;
+  renderVisitFace($("visitFront"), editVisit, "front", { markSize: 20 });
+  renderVisitFace($("visitBack"), editVisit, "back", { textScale: 0.62, markSize: 16 });
+  $("vCompanyInput").value = editVisit.company || "";
+  $("vFontValue").textContent = fontLabel(editVisit.front.font);
+  $("vSizeValue").textContent = editVisit.front.fontSize + " px";
+  $("vTextState").textContent = editVisit.front.textEnabled ? "вкл" : "выкл";
+  $("vLabelState").textContent = editVisit.front.label.enabled ? "вкл" : "выкл";
+  $("vBtnTextColor").style.background = editVisit.front.textColor;
+  buildVisitShirtRow($("vShirtPresets"), "front");
+  $("vBackFontValue").textContent = fontLabel(editVisit.back.font);
+  $("vBackSizeValue").textContent = editVisit.back.fontSize + " px";
+  $("vBtnBackColor").style.background = editVisit.back.color;
+  buildVisitShirtRow($("vBackShirtPresets"), "back");
+  renderFieldList();
+  $("vPhotoNote").textContent = editVisit.back.photo ? "Фото задано — оно показывается вместо полей." : "Фото не задано. Показываются поля.";
+}
+function buildVisitShirtRow(host, side) {
+  host.innerHTML = "";
+  const cfg = side === "front" ? editVisit.front : editVisit.back;
+  const plus = document.createElement("button");
+  plus.className = "color-square plus"; plus.type = "button";
+  plus.title = "Свой фон";
+  plus.innerHTML = '<span class="plus-badge">+</span>';
+  plus.style.background = (cfg.shirt.mode === "image" && cfg.shirt.image) ? 'center/cover no-repeat url("' + cfg.shirt.image + '")' : shirtCss(cfg.shirt);
+  plus.onclick = () => openBackground(cfg.shirt, (s) => { cfg.shirt = normShirt(s); renderVisitEditor(); });
+  host.appendChild(plus);
+  PRESET_COLORS.forEach((col) => {
+    const b = document.createElement("button");
+    b.className = "color-square" + (cfg.shirt.mode === "solid" && cfg.shirt.colors[0] === col ? " on" : "");
+    b.type = "button"; b.style.background = col; b.title = col;
+    b.onclick = () => { cfg.shirt = normShirt({ mode: "solid", colors: [col], image: null }); renderVisitEditor(); };
+    host.appendChild(b);
+  });
+}
+function renderFieldList() {
+  const L = $("vFieldList");
+  L.innerHTML = "";
+  if (!editVisit.back.fields.length) {
+    L.innerHTML = '<div class="empty-note" style="padding:12px 0">Полей нет. Нажмите «+ поле».</div>';
+    return;
+  }
+  editVisit.back.fields.forEach((f) => {
+    const it = document.createElement("div");
+    it.className = "field-item" + (f.id === selectedFieldId ? " sel" : "");
+    it.innerHTML = '<span class="fi-text">' + escapeHtml((f.text || "(пусто)").split("\n")[0]) + "</span>" +
+      '<span class="fi-pos">' + escapeHtml(POS_LABEL[f.position] || "") + "</span>" +
+      '<button class="fi-btn" type="button" data-edit="' + f.id + '" title="Изменить">✎</button>' +
+      '<button class="fi-btn" type="button" data-pos="' + f.id + '" title="Позиция 3×3">⊞</button>' +
+      '<button class="fi-btn" type="button" data-del="' + f.id + '" title="Удалить">🗑</button>';
+    L.appendChild(it);
+  });
+}
+function commitVisit(silent) {
+  if (!editVisit) return;
+  const i = DB.visits.findIndex((v) => v.id === editVisit.id);
+  if (i >= 0) DB.visits[i] = editVisit; else DB.visits.push(editVisit);
+  const ok = saveDB();
+  renderVisits();
+  if (!silent) toast(ok ? "Визитка сохранена" : "Ошибка сохранения");
+  return ok;
+}
+
+/* ---------------------------- парсер vCard для визиток ----------------------- */
+function parseVCard(text) {
+  const out = { company: "", name: "", fields: [] };
+  const lines = String(text).replace(/\r\n/g, "\n").split("\n");
+  const get = (key) => {
+    for (const ln of lines) {
+      const idx = ln.indexOf(":");
+      if (idx < 0) continue;
+      const head = ln.slice(0, idx).split(";")[0].toUpperCase();
+      if (head === key) return ln.slice(idx + 1).trim();
+    }
+    return "";
+  };
+  const unesc = (s) => String(s || "").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
+  out.name = unesc(get("FN"));
+  out.company = unesc(get("ORG")).replace(/;/g, " ");
+  const push = (label, value) => { if (value) out.fields.push({ label: label, text: value }); };
+  push("", out.name);
+  push("", out.company);
+  push(get("TITLE"), "");
+  const title = get("TITLE");
+  if (title) out.fields.push({ label: "", text: unesc(title) });
+  ["TEL", "EMAIL", "URL"].forEach((k) => {
+    lines.forEach((ln) => {
+      const idx = ln.indexOf(":");
+      if (idx < 0) return;
+      if (ln.slice(0, idx).split(";")[0].toUpperCase() === k) push("", unesc(ln.slice(idx + 1)));
+    });
+  });
+  const adr = get("ADR");
+  if (adr) { const parts = unesc(adr).split(/[\n;]/).map((s) => s.trim()).filter(Boolean); if (parts.length) out.fields.push({ label: "", text: parts.join(", ") }); }
+  out.fields = out.fields.filter((f, i, a) => f.text && a.findIndex((x) => x.text === f.text) === i).slice(0, 8);
+  return out;
+}
+function visitFromVCard(text) {
+  const v = defaultVisit();
+  const p = parseVCard(text);
+  v.company = p.company || p.name || "Контакт";
+  const zoneOrder = ["ml", "ml", "ml", "mc", "mc", "mr", "mr", "bl"];
+  v.back.fields = p.fields.map((f, i) => ({
+    id: uid(), text: f.text, position: zoneOrder[Math.min(i, zoneOrder.length - 1)],
+    font: v.back.font, fontSize: v.back.fontSize, color: v.back.color
+  }));
+  return v;
+}
+
+/* ================================ ПРЕДЪЯВЛЕНИЕ =============================== */
+let presentCard = null, presentVisit = null, presentMode = "first";
+let wakeLock = null, savedBrightness = null;
+
+function enterPresentMode() {
+  const id = (document.querySelector(".screen.active") || {}).id;
+  if (id !== "screen-present" && id !== "screen-present-visit") return;
+  if (DB.settings.keepAwake && "wakeLock" in navigator) {
+    navigator.wakeLock.request("screen").then((l) => { wakeLock = l; l.addEventListener("release", () => { wakeLock = null; }); }).catch(() => { });
+  }
+  if (DB.settings.brightenOnPresent && navigator.screen && typeof navigator.screen.setBrightness === "function") {
+    try { navigator.screen.setBrightness(1.0).catch(() => { }); } catch (e) { }
+  }
+  document.documentElement.style.filter = "brightness(1.06)";
+}
+function exitPresentMode() {
+  document.documentElement.style.filter = "";
+  if (wakeLock) { try { wakeLock.release(); } catch (e) { } wakeLock = null; }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    const id = (document.querySelector(".screen.active") || {}).id;
+    if (id === "screen-present" || id === "screen-present-visit") enterPresentMode();
+  }
+});
+
+function openPresent(card) {
+  presentCard = card; presentVisit = null; presentMode = "first";
+  $("presentTitle").textContent = card.name || "Карта";
+  renderCardFace($("presentFace"), card, { markSize: 18 });
+  updatePresentUI();
+  show("screen-present");
+}
+function updatePresentUI() {
+  const c = presentCard;
+  if (!c) return;
+  const first = c.primaryCode || {}, second = c.secondaryCode || {};
+  const hasFirst = !!first.value, hasSecond = !!c.secondCodeEnabled && !!second.value;
+  if (presentMode === "second" && !hasSecond) presentMode = "first";
+  if (presentMode === "first" && !hasFirst && hasSecond) presentMode = "second";
+
+  $("pwFirst").textContent = formatLabel(first.format);
+  $("pwSecond").textContent = formatLabel(second.format);
+  $("pwSecond").style.display = hasSecond ? "" : "none";
+  $("pwFirst").style.display = hasFirst ? "" : "none";
+  $("presentSwitch").style.display = (hasFirst && hasSecond) ? "flex" : "none";
+  $("pwFirst").classList.toggle("active", presentMode === "first");
+  $("pwSecond").classList.toggle("active", presentMode === "second");
+
+  const meta = [];
+  if (hasFirst) meta.push("Основной: " + formatLabel(first.format));
+  if (hasSecond) meta.push("Второй: " + formatLabel(second.format));
+  $("presentMeta").textContent = meta.join("   ·   ");
+
+  const box = $("codeRender");
+  box.innerHTML = "";
+  const active = presentMode === "second" ? second : first;
+  if (!active.value) {
+    box.innerHTML = '<div class="empty-note">Код не задан.<br/>Отсканируйте или введите значение в редакторе.</div>';
+    return;
+  }
+  renderCode(box, active.format, active.value);
+}
+function renderCode(container, format, value) {
+  container.innerHTML = "";
+  const f = FORMATS[format];
+  if (!f) { container.innerHTML = '<div class="empty-note">Формат «' + escapeHtml(format) + '» не поддерживается генератором.</div>'; return; }
+  try {
+    if (f.kind === "qr") {
+      const div = document.createElement("div");
+      container.appendChild(div);
+      if (window.QRCode) {
+        new QRCode(div, { text: value, width: 240, height: 240, colorDark: "#000000", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+      } else {
+        div.innerHTML = '<div class="empty-note">Библиотека QR не загрузилась.<br/>Нужен один выход в сеть, затем работает офлайн.</div>';
+      }
+    } else {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "barcode-svg");
+      container.appendChild(svg);
+      if (!window.JsBarcode) { svg.remove(); container.innerHTML = '<div class="empty-note">JsBarcode не загрузился.</div>'; return; }
+      JsBarcode(svg, value, { format: f.js, displayValue: false, margin: 10, width: 2.2, height: 130, background: "#ffffff", linecolor: "#000000" });
+    }
+  } catch (err) {
+    container.innerHTML = '<div class="empty-note">Не построить код в формате «' + escapeHtml(f.label) + '»: ' + escapeHtml(err.message || err) +
+      '<br/><br/>Проверьте, что значение подходит для этого формата (например EAN-13 — 12–13 цифр).</div>';
+  }
+}
+function openPresentVisit(visit) {
+  presentVisit = visit; presentCard = null;
+  $("presentVisitTitle").textContent = visit.company || "Визитка";
+  const el = $("presentVisitBack");
+  renderVisitFace(el, visit, "back", { textScale: 0.66, markSize: 16 });
+  $("presentVisitMeta").textContent = visit.back.photo ? "Фото визитки" : (visit.back.fields.length + " пол(ей) на обороте");
+  show("screen-present-visit");
+}
+
+/* ================================== СЕТКИ =================================== */
+function renderMain() {
+  const g = $("cardsGrid");
+  g.innerHTML = "";
+  $("cardsCount").textContent = DB.cards.length ? (DB.cards.length + " " + plural(DB.cards.length, "карта", "карты", "карт")) : "";
+  if (!DB.cards.length) {
+    g.innerHTML = '<div class="empty-note">Пока нет карт.<br/>Нажмите ＋ вверху: добавить вручную, снять камерой или взять фото из галереи.</div>';
+    return;
+  }
+  DB.cards.forEach((c) => {
+    const t = document.createElement("div");
+    t.className = "tile";
+    t.setAttribute("role", "button");
+    t.tabIndex = 0;
+    renderCardFace(t, c, { textScale: 0.62, markSize: 13 });
+    t.onclick = () => openPresent(c);
+    t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPresent(c); } };
+    g.appendChild(t);
+  });
+}
+function renderVisits() {
+  const g = $("visitsGrid");
+  g.innerHTML = "";
+  $("visitsCount").textContent = DB.visits.length ? (DB.visits.length + " " + plural(DB.visits.length, "визитка", "визитки", "визиток")) : "";
+  if (!DB.visits.length) {
+    g.innerHTML = '<div class="empty-note">Пока нет визиток.<br/>Нажмите ＋ вверху.</div>';
+    return;
+  }
+  DB.visits.forEach((v) => {
+    const t = document.createElement("div");
+    t.className = "tile";
+    t.setAttribute("role", "button");
+    t.tabIndex = 0;
+    renderVisitFace(t, v, "front", { textScale: 0.6, markSize: 13 });
+    t.onclick = () => openPresentVisit(v);
+    t.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPresentVisit(v); } };
+    g.appendChild(t);
+  });
+}
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+/* ================================ СКАНЕР =================================== */
+const Scanner = (() => {
+  let stream = null, track = null, rafId = 0, detector = null, zxing = null;
+  let useNative = false, facing = "environment", torchOn = false, onResult = null, busy = false, running = false;
+
+  function selectedDetFormats() {
+    return (DB.settings.formats || []).map((f) => FORMATS[f] && FORMATS[f].det).filter(Boolean);
+  }
+  async function ensureEngine() {
+    useNative = "BarcodeDetector" in window;
+    if (useNative) {
+      try { detector = new BarcodeDetector({ formats: selectedDetFormats() }); }
+      catch (e) { try { detector = new BarcodeDetector(); } catch (e2) { detector = null; } }
+      if (detector) return;
+    }
+    if (!window.ZXing) await loadZxingScript();
+    if (window.ZXing) {
+      try { zxing = new window.ZXing.BrowserMultiFormatReader(undefined, false, buildHints()); } catch (e) { try { zxing = new window.ZXing.BrowserMultiFormatReader(); } catch (e2) { zxing = null; } }
+    }
+  }
+  function buildHints() {
+    try {
+      const map = new window.ZXing.Map();
+      const BCF = window.ZXing.BarcodeFormat;
+      const want = (DB.settings.formats || []).map((f) => BCF[f.toUpperCase()] || BCF[f]).filter(Boolean);
+      if (want.length) map.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, want);
+      map.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
+      return map;
+    } catch (e) { return undefined; }
+  }
+  async function start(opts) {
+    onResult = opts.onResult;
+    facing = opts.facing || (DB.settings.preferBack ? "environment" : "user");
+    torchOn = false;
+    $("scError").textContent = "";
+    $("scStatus").textContent = "Наведите камеру на код";
+    running = true;
+    await ensureEngine();
+    if (!useNative && !zxing) {
+      $("scError").textContent = "Нет движка распознавания. Нужен один выход в сеть для загрузки ZXing, либо используйте «Фото из галереи» / ручной ввод.";
+      return false;
+    }
+    try { await openStream(); } catch (e) {
+      $("scError").textContent = "Камера недоступна: " + (e && e.message ? e.message : e);
+      return false;
+    }
+    loop();
+    return true;
+  }
+  async function openStream() {
+    stopStream();
+    const constraints = { audio: false, video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } };
+    try { stream = await navigator.mediaDevices.getUserMedia(constraints); }
+    catch (e) { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
+    track = stream.getVideoTracks()[0];
+    const v = $("scVideo");
+    v.srcObject = stream;
+    try { await v.play(); } catch (e) { }
+    if (DB.settings.torchDefault) requestTorch(true, true);
+  }
+  function loop() {
+    cancelAnimationFrame(rafId);
+    busy = false;
+    const tick = async () => {
+      if (!running) return;
+      rafId = requestAnimationFrame(tick);
+      if (busy || !useNative) return;
+      const v = $("scVideo");
+      if (!v.videoWidth) return;
+      busy = true;
+      try {
+        const codes = await detector.detect(v);
+        if (codes && codes.length) {
+          const raw = codes[0].rawValue;
+          const fmt = DET_TO_INTERNAL[codes[0].format] || codes[0].format;
+          finish(raw, fmt);
+        }
+      } catch (e) { }
+      finally { busy = false; }
+    };
+    rafId = requestAnimationFrame(tick);
+  }
+  function startZxingLive() {
+    const v = $("scVideo");
+    try {
+      zxing.decodeFromVideoElement(v, (res) => {
+        if (!running) return;
+        if (res) finish(res.getText(), zxFormat(res.getBarcodeFormat()));
+      });
+      return true;
+    } catch (e) { return false; }
+  }
+  function zxFormat(fmt) {
+    try {
+      let name = fmt;
+      if (typeof fmt === "number" && window.ZXing && window.ZXing.BarcodeFormat) {
+        const found = Object.keys(window.ZXing.BarcodeFormat).find((k) => window.ZXing.BarcodeFormat[k] === fmt);
+        if (found) name = found;
+      }
+      const s = String(name).toUpperCase();
+      const table = [["QR", "qr_code"], ["PDF", "pdf417"], ["DATA_MATRIX", "data_matrix"], ["DATAMATRIX", "data_matrix"], ["AZTEC", "aztec"],
+      ["CODE_128", "code_128"], ["CODE128", "code_128"], ["CODE_39", "code_39"], ["CODE39", "code_39"],
+      ["EAN_13", "ean_13"], ["EAN13", "ean_13"], ["EAN_8", "ean_8"], ["EAN8", "ean_8"],
+      ["UPC_A", "upc_a"], ["UPCA", "upc_a"], ["UPC_E", "upc_e"], ["UPCE", "upc_e"], ["ITF", "itf"]];
+      for (const [k, v] of table) if (s.indexOf(k) >= 0) return v;
+      return "code_128";
+    } catch (e) { return "code_128"; }
+  }
+  function finish(value, format) {
+    const cb = onResult;
+    stop();
+    if (cb) cb({ value: String(value == null ? "" : value), format: format });
+  }
+  function stopStream() {
+    running = false;
+    cancelAnimationFrame(rafId);
+    if (zxing) { try { zxing.reset(); } catch (e) { } }
+    if (stream) stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) { } });
+    stream = null; track = null;
+    const v = $("scVideo");
+    if (v) v.srcObject = null;
+  }
+  function stop() { stopStream(); }
+  async function flip() {
+    facing = facing === "environment" ? "user" : "environment";
+    const cb = onResult;
+    try { await openStream(); if (useNative) loop(); else startZxingLive(); onResult = cb; }
+    catch (e) { $("scError").textContent = "Не переключить камеру: " + (e.message || e); }
+  }
+  async function requestTorch(force, silent) {
+    if (!track) { if (!silent) $("scError").textContent = "Камера не запущена"; return; }
+    try {
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (!caps.torch) { if (!silent) $("scError").textContent = "Фонарик не поддерживается"; return; }
+      torchOn = force != null ? force : !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+      $("scTorch").classList.toggle("on", torchOn);
+    } catch (e) { if (!silent) $("scError").textContent = "Фонарик недоступен"; }
+  }
+  /* кадр с видео -> распознать */
+  async function shootFrame() {
+    const v = $("scVideo");
+    if (!v.videoWidth) { $("scError").textContent = "Видео ещё не готово"; return; }
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext("2d").drawImage(v, 0, 0);
+    await decodeDataURL(c.toDataURL("image/jpeg", 0.92), "Кадр с камеры");
+  }
+  /* декодирование изображения (фото из галереи / кадр) */
+  async function decodeDataURL(dataUrl, sourceName) {
+    $("scStatus").textContent = "Читаю " + (sourceName || "изображение") + "…";
+    if (useNative && detector) {
+      try {
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+        const codes = await detector.detect(img);
+        if (codes && codes.length) { finish(codes[0].rawValue, DET_TO_INTERNAL[codes[0].format] || codes[0].format); return true; }
+      } catch (e) { }
+    }
+    if (!zxing) { await ensureEngine(); }
+    if (zxing) {
+      try {
+        const res = await zxing.decodeFromImageUrl(dataUrl);
+        if (res) { finish(res.getText(), zxFormat(res.getBarcodeFormat())); return true; }
+      } catch (e) { }
+    }
+    $("scStatus").textContent = "Код не найден. Наведите камеру точнее или введите значение вручную.";
+    toast("Код не распознан");
+    return false;
+  }
+  return {
+    start, stop, flip, torch: () => requestTorch(null, false), shootFrame, decodeDataURL,
+    isNative: () => useNative, hasEngine: () => useNative || !!zxing
+  };
+})();
+
+function loadZxingScript() {
+  return new Promise((resolve) => {
+    if (window.ZXing) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.18.4/umd/index.min.js";
+    s.async = true;
+    s.onload = () => resolve(!!window.ZXing);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+let scannerCb = null;
+function openScanner(title, cb, opts) {
+  opts = opts || {};
+  scannerCb = cb;
+  $("scTitle").textContent = title || "Сканер";
+  $("scManual").value = "";
+  $("scannerModal").classList.remove("hidden");
+  Scanner.start({ onResult: (r) => { $("scannerModal").classList.add("hidden"); if (scannerCb) scannerCb(r); }, facing: opts.facing });
+}
+function closeScanner() { $("scannerModal").classList.add("hidden"); Scanner.stop(); }
+function openPhotoDecode(title, cb) {
+  scannerCb = cb;
+  $("scTitle").textContent = title || "Код с фото";
+  $("scannerModal").classList.remove("hidden");
+  $("scStatus").textContent = "Выберите фото из галереи";
+  pickImage({
+    source: "gallery",
+    cb: async (dataUrl, file) => {
+      $("scStatus").textContent = "Читаю фото…";
+      const ok = await Scanner.decodeDataURL(dataUrl, "фото");
+      if (!ok) $("scannerModal").classList.add("hidden");
+    }
+  });
+}
+function guessFormatFromValue(val) {
+  const v = String(val || "").trim();
+  if (/^\d{13}$/.test(v)) return "ean_13";
+  if (/^\d{8}$/.test(v)) return "ean_8";
+  if (/^\d{12}$/.test(v)) return "upc_a";
+  if (/^[0-9A-Z\-\. \$\/\+\%]*$/.test(v) && v.length && v.length <= 48) return "code_39";
+  return "code_128";
+}
+
+/* ============================== ФОТО-ДЕЙСТВИЕ ============================== */
+let paState = null;
+function openPhotoAction(dataUrl, decoded) {
+  paState = { dataUrl: dataUrl, decoded: decoded || null };
+  $("paThumb").style.backgroundImage = 'url("' + dataUrl + '")';
+  const found = $("paFound");
+  if (decoded && decoded.value) {
+    found.classList.remove("hidden");
+    found.className = "banner";
+    found.querySelector(".bx").innerHTML = "Распознано: <b>" + escapeHtml(formatLabel(decoded.format)) + "</b><br/><span style=\"font-family:ui-monospace,monospace;font-size:12px;word-break:break-all\">" + escapeHtml(decoded.value.slice(0, 90)) + (decoded.value.length > 90 ? "…" : "") + "</span>";
+    $("paUseCode").classList.remove("hidden");
+    $("paBoth").classList.remove("hidden");
+  } else {
+    found.classList.remove("hidden");
+    found.className = "banner warn";
+    found.querySelector(".bx").textContent = "Код на фото не найден. Можно поставить фото на рубашку или ввести значение вручную.";
+    $("paUseCode").classList.add("hidden");
+    $("paBoth").classList.add("hidden");
+  }
+  $("photoActionModal").classList.remove("hidden");
+}
+function closePhotoAction() { $("photoActionModal").classList.add("hidden"); paState = null; }
+
+/* ================================ НАСТРОЙКИ ================================ */
+let deferredPrompt = null;
+function renderSettings() {
+  const s = DB.settings;
+  const native = "BarcodeDetector" in window;
+  const used = storageBytes();
+  const mb = (used / 1048576).toFixed(2);
+  const limit = s.storageLimitMB;
+  const over = used > limit * 1048576;
+
+  $("settingsBody").innerHTML =
+    '<div id="setBanner"></div>' +
+    '<div class="card">' +
+    '<div class="section-title" style="margin-top:0">Приложение</div>' +
+    '<div class="row" style="margin-bottom:6px"><button id="btnInstall" class="btn small" style="flex:1">Установить на телефон</button><button id="btnReload" class="btn small">Обновить</button></div>' +
+    '<div class="hint">Статус: <span class="badge ' + (isStandalone() ? "ok" : "no") + '">' + (isStandalone() ? "запущено как приложение" : "в браузере") + '</span> ' +
+    '<span class="badge ' + (navigator.onLine ? "ok" : "no") + '">' + (navigator.onLine ? "сеть есть" : "офлайн") + "</span> " +
+    '<span class="badge ' + (native ? "ok" : "no") + '">нативный сканер: ' + (native ? "да" : "нет (ZXing)") + "</span></div>" +
+    "</div>" +
+
+    '<div class="card">' +
+    '<div class="section-title" style="margin-top:0">Резервное копирование</div>' +
+    '<div class="row" style="margin-bottom:6px"><button id="btnExport" class="btn small" style="flex:1">Экспорт настроек</button><button id="btnImport" class="btn small" style="flex:1">Импорт настроек</button></div>' +
+    '<div class="hint">Файл JSON включает карты, визитки, рубашки, коды и настройки. Импорт спрашивает: заменить или добавить.</div>' +
+    "</div>" +
+
+    '<div class="card">' +
+    '<div class="section-title" style="margin-top:0">Камера и сканер</div>' +
+    switchRow("preferBack", "Приоритет задней камеры", "Передняя — для сканирования с экрана") +
+    switchRow("torchDefault", "Фонарик включён сразу", "Если устройство поддерживает") +
+    switchRow("brightenOnPresent", "Ярче на экране предъявления", "Подсветка + максимум яркости") +
+    '<div class="field" style="margin-bottom:0"><label>Форматы распознавания</label>' +
+    '<select id="selFormats" multiple size="8">' +
+    Object.keys(FORMATS).map((f) => '<option value="' + f + '"' + (s.formats.includes(f) ? " selected" : "") + ">" + escapeHtml(FORMATS[f].label) + "</option>").join("") +
+    "</select></div>" +
+    '<div class="hint">Доступный набор зависит от браузера и устройства.</div>' +
+    "</div>" +
+
+    '<div class="card">' +
+    '<div class="section-title" style="margin-top:0">Данные и хранение</div>' +
+    switchRow("autoSave", "Автосохранение", "«Назад»/«Отмена» сохраняют изменения") +
+    switchRow("compressImages", "Сжимать изображения рубашек", "Экономит место, качество 82%") +
+    '<div class="field" style="margin-bottom:6px"><label>Лимит хранилища (МБ)</label><input id="numStorageLimit" type="number" min="1" max="10" step="1" value="' + limit + '" /></div>' +
+    '<div class="hint'>Занято сейчас: <b>' + mb + " МБ</b> из ориентировочных " + limit + " МБ. Карт: " + DB.cards.length + ", визиток: " + DB.visits.length + ".</div>" +
+    '<div class="row" style="margin-top:10px"><button id="btnClearAll" class="btn danger small" style="flex:1">Очистить все данные</button></div>' +
+    "</div>" +
+
+    '<div class="card">' +
+    '<div class="section-title" style="margin-top:0">О проекте</div>' +
+    '<div class="hint">Данные хранятся только на устройстве (localStorage) и никуда не отправляются. Для работы камеры и установки нужен HTTPS — GitHub Pages его даёт. Офлайн режим включается после первой загрузки: service worker кэширует оболочку и библиотеки кодов.</div>' +
+    "</div>";
+
+  $$("#settingsBody .switch").forEach((sw) => {
+    const key = sw.dataset.key;
+    sw.classList.toggle("on", !!s[key]);
+    sw.onclick = () => { s[key] = !s[key]; saveDB(); renderSettings(); };
+  });
+  $("selFormats").onchange = () => {
+    s.formats = Array.from($("selFormats").selectedOptions).map((o) => o.value);
+    if (!s.formats.length) s.formats = ["qr_code"];
+    saveDB();
+    toast("Форматы обновлены");
+  };
+  $("numStorageLimit").onchange = () => { s.storageLimitMB = clamp(Number($("numStorageLimit").value) || 5, 1, 10); saveDB(); renderSettings(); };
+  $("btnExport").onclick = exportBackup;
+  $("btnImport").onclick = () => { importCb = null; $("importFile").click(); };
+  $("btnClearAll").onclick = () => {
+    if (!confirm("Удалить ВСЕ карты, визитки и настройки? Действие необратимо. Сначала сделайте экспорт.")) return;
+    try { localStorage.removeItem(LS_KEY); } catch (e) { }
+    DB = { cards: [], visits: [], settings: defaultSettings() };
+    renderMain(); renderVisits(); renderSettings();
+    toast("Данные очищены");
+  };
+  $("btnReload").onclick = () => location.reload();
+  $("btnInstall").onclick = doInstall;
+  if (!deferredPrompt && isStandalone()) $("btnInstall").disabled = true;
+
+  const bn = $("setBanner");
+  if (over) bn.innerHTML = '<div class="banner warn"><div class="bx">Хранилище превышает указанный лимит (' + mb + " МБ). Браузер может отказать в записи — уменьшите лимит изображений или сделайте экспорт и очистку.</div></div>";
+  else if (!navigator.onLine) bn.innerHTML = '<div class="banner"><div class="bx">Сети нет — работаем офлайн. Новые библиотеки кодов не скачаются, но уже кэшированные работают.</div></div>';
+  else bn.innerHTML = "";
+}
+function switchRow(key, label, sub) {
+  return '<div class="switch-row"><div><div class="lab">' + escapeHtml(label) + "</div>" + (sub ? '<div class="sub">' + escapeHtml(sub) + "</div>" : "") +
+    '</div><button class="switch" data-key="' + key + '" aria-label="' + escapeHtml(label) + '"></button></div>';
+}
+function isStandalone() {
+  return window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+function doInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => { deferredPrompt = null; renderSettings(); });
+  } else {
+    toast("В меню браузера выберите «Установить приложение» / «На главный экран»", 3600);
+  }
+}
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredPrompt = e; if ((document.querySelector(".screen.active") || {}).id === "screen-settings") renderSettings(); });
+
+function exportBackup() {
+  const payload = { app: "CARD", version: 2, exportedAt: new Date().toISOString(), data: { cards: DB.cards, visits: DB.visits, settings: DB.settings } };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "card-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  toast("Файл резервной копии сохранён");
+}
+let importCb = null;
+function importBackup(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const p = JSON.parse(rd.result);
+      const d = p && p.data ? p.data : p;
+      if (!d || (!Array.isArray(d.cards) && !Array.isArray(d.visits) && !d.settings)) throw new Error("файл не похож на резервную копию CARD");
+      const replace = confirm("Найдено: карт " + ((d.cards || []).length) + ", визиток " + ((d.visits || []).length) + ".\n\nОК — ЗАМЕНИТЬ текущие данные.\nОтмена — ДОБАВИТЬ к существующим.");
+      if (replace) {
+        DB.cards = (d.cards || []).map(migrateCard);
+        DB.visits = (d.visits || []).map(migrateVisit);
+        DB.settings = Object.assign(defaultSettings(), d.settings || {});
+      } else {
+        const ids = new Set(DB.cards.map((c) => c.id));
+        (d.cards || []).map(migrateCard).forEach((c) => { if (!ids.has(c.id)) DB.cards.push(c); });
+        const vids = new Set(DB.visits.map((v) => v.id));
+        (d.visits || []).map(migrateVisit).forEach((v) => { if (!vids.has(v.id)) DB.visits.push(v); });
+        DB.settings = Object.assign(DB.settings, d.settings || {});
+      }
+      saveDB();
+      renderMain(); renderVisits(); renderSettings();
+      toast("Импорт выполнен");
+      if (importCb) { const cb = importCb; importCb = null; cb(); }
+    } catch (e) {
+      alert("Ошибка импорта: " + (e.message || e));
+    }
+  };
+  rd.onerror = () => alert("Не удалось прочитать файл");
+  rd.readAsText(file);
+}
+
+/* ============================== PWA: манифест/иконки/SW ===================== */
+function makeIcon(size, maskable) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const x = c.getContext("2d");
+  const pad = maskable ? size * 0.18 : size * 0.08;
+  x.fillStyle = "#111111";
+  if (maskable) { x.fillRect(0, 0, size, size); }
+  else { roundRect(x, 0, 0, size, size, size * 0.22); x.fill(); }
+  const w = size - pad * 2, h = w / 1.586, ox = pad, oy = (size - h) / 2;
+  const g = x.createLinearGradient(ox, oy, ox + w, oy + h);
+  g.addColorStop(0, "#d1001f"); g.addColorStop(1, "#ffffff");
+  x.fillStyle = g;
+  roundRect(x, ox, oy, w, h, h * 0.16); x.fill();
+  x.fillStyle = "rgba(0,0,0,.28)";
+  x.fillRect(ox, oy + h * 0.62, w, h * 0.1);
+  x.fillStyle = "#111";
+  x.font = "800 " + Math.round(size * 0.11) + "px system-ui, Arial, sans-serif";
+  x.textAlign = "center"; x.textBaseline = "middle";
+  x.fillText("CARD", size / 2, oy + h * 0.36);
+  return c.toDataURL("image/png");
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function setupPWA() {
+  const icon192 = makeIcon(192, false);
+  const icon512 = makeIcon(512, false);
+  const maskable = makeIcon(512, true);
+  $("iconLink").href = icon192;
+  $("appleIconLink").href = icon192;
+  const base = location.href.split("?")[0].split("#")[0];
+  const dir = base.slice(0, base.lastIndexOf("/") + 1);
+  const manifest = {
+    name: "CARD — Мой кошелёк",
+    short_name: "CARD",
+    description: "Локальный кошелёк скидочных карт и визиток.",
+    id: dir,
+    start_url: base,
+    scope: dir,
+    display: "standalone",
+    display_override: ["standalone", "minimal-ui"],
+    orientation: "portrait",
+    background_color: "#f3f4f6",
+    theme_color: "#111111",
+    lang: "ru",
+    categories: ["finance", "utilities"],
+    icons: [
+      { src: icon192, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: icon512, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: maskable, sizes: "512x512", type: "image/png", purpose: "maskable" }
+    ]
+  };
+  try {
+    $("manifestLink").href = "data:application/manifest+json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifest));
+  } catch (e) { console.warn("manifest", e); }
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {
+        /* sw.js не положил рядом — приложение работает онлайн, без офлайна */
+      });
+    });
+  }
+}
+
+/* ================================== ПРИВЯЗКИ ================================ */
+function bind() {
+  /* ---- нижняя навигация ---- */
+  $("bottomNav").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const id = b.dataset.screen;
+    if (id === "screen-main") renderMain();
+    if (id === "screen-visits") renderVisits();
+    if (id === "screen-settings") renderSettings();
+    show(id);
+  });
+
+  /* ---- назад / отмена / сохранить ---- */
+  document.addEventListener("click", (e) => {
+    const back = e.target.closest("[data-back]");
+    const cancel = e.target.closest("[data-cancel]");
+    const save = e.target.closest("[data-save]");
+    if (back || cancel) {
+      if (editCard) {
+        if (DB.settings.autoSave && back) commitCard(true);
+        editCard = null; renderMain(); show("screen-main");
+      } else if (editVisit) {
+        if (DB.settings.autoSave && back) commitVisit(true);
+        editVisit = null; renderVisits(); show("screen-visits");
+      } else if (presentCard) { presentCard = null; renderMain(); show("screen-main"); }
+      else if (presentVisit) { presentVisit = null; renderVisits(); show("screen-visits"); }
+      else show(lastTab);
+      return;
+    }
+    if (save) {
+      if (editCard) { if (commitCard()) { editCard = null; show("screen-main"); } }
+      else if (editVisit) { if (commitVisit()) { editVisit = null; show("screen-visits"); } }
+    }
+  });
+
+  /* ---- верхние ＋ ---- */
+  $("btnAddCard").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("addMenuVisit").classList.add("hidden");
+    $("addMenuCard").classList.toggle("hidden");
+  });
+  $("btnAddVisit").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("addMenuCard").classList.add("hidden");
+    $("addMenuVisit").classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#addMenuCard") && e.target !== $("btnAddCard")) $("addMenuCard").classList.add("hidden");
+    if (!e.target.closest("#addMenuVisit") && e.target !== $("btnAddVisit")) $("addMenuVisit").classList.add("hidden");
+  });
+
+  $("addMenuCard").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-action]");
+    if (!b) return;
+    closeMenus();
+    const a = b.dataset.action;
+    if (a === "add-card") openCardEditor(defaultCard());
+    else if (a === "scan-card") openScanner("Сканирование карты", (r) => {
+      const c = defaultCard();
+      c.primaryCode = { value: r.value, format: r.format };
+      c.name = (r.value || "Скан карты").slice(0, 20);
+      openCardEditor(c);
+      toast("Формат: " + formatLabel(r.format));
+    });
+    else if (a === "photo-card") pickImage({
+      source: "gallery",
+      cb: async (dataUrl) => {
+        let decoded = null;
+        try {
+          const res = await decodeImageOnce(dataUrl);
+          decoded = res;
+        } catch (err) { }
+        openPhotoAction(dataUrl, decoded);
+      }
+    });
+    else if (a === "create-layout") {
+      const c = defaultCard();
+      openCardEditor(c);
+      setTimeout(() => openBackground(c.shirt, (s) => { c.shirt = normShirt(s); renderCardEditor(); }, "gradient"), 60);
+    }
+  });
+
+  $("addMenuVisit").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-action]");
+    if (!b) return;
+    closeMenus();
+    const a = b.dataset.action;
+    if (a === "add-visit") openVisitEditor(defaultVisit());
+    else if (a === "scan-visit") openScanner("Сканирование визитки", (r) => {
+      const v = /^BEGIN:VCARD/i.test(r.value) ? visitFromVCard(r.value) : defaultVisit();
+      if (!/^BEGIN:VCARD/i.test(r.value)) { v.back.fields = [{ id: uid(), text: r.value, position: "ml", font: v.back.font, fontSize: v.back.fontSize, color: v.back.color }]; }
+      openVisitEditor(v);
+      toast("Формат: " + formatLabel(r.format));
+    });
+    else if (a === "photo-visit") pickImage({
+      source: "gallery",
+      cb: async (dataUrl) => {
+        const res = await decodeImageOnce(dataUrl);
+        if (res && res.value && /^BEGIN:VCARD/i.test(res.value)) { openVisitEditor(visitFromVCard(res.value)); toast("vCard распознана"); return; }
+        const v = defaultVisit();
+        v.back.photo = dataUrl;
+        openVisitEditor(v);
+        toast(res && res.value ? "Код распознан, фото на оборот" : "Фото поставлено на оборот");
+      }
+    });
+  });
+
+  /* ---- модалка «фото из галереи» ---- */
+  $("paUseCode").onclick = () => {
+    if (!paState) return;
+    const d = paState.decoded;
+    closePhotoAction();
+    const c = defaultCard();
+    if (d) c.primaryCode = { value: d.value, format: d.format };
+    openCardEditor(c);
+  };
+  $("paUseShirt").onclick = () => {
+    if (!paState) return;
+    const du = paState.dataUrl;
+    closePhotoAction();
+    const c = defaultCard();
+    c.shirt = normShirt({ mode: "image", colors: ["#ffffff"], image: du, imageTransform: { scale: 1, nx: 0, ny: 0 } });
+    openCardEditor(c);
+  };
+  $("paBoth").onclick = () => {
+    if (!paState) return;
+    const du = paState.dataUrl, d = paState.decoded;
+    closePhotoAction();
+    const c = defaultCard();
+    c.shirt = normShirt({ mode: "image", colors: ["#ffffff"], image: du, imageTransform: { scale: 1, nx: 0, ny: 0 } });
+    if (d) { c.primaryCode = { value: d.value, format: d.format }; c.name = d.value.slice(0, 20); }
+    openCardEditor(c);
+  };
+  $("paCancel").onclick = closePhotoAction;
+
+  /* ---- редактор карты ---- */
+  $("cBtnCategory").onclick = () => openCategoryPicker(editCard.category, (c) => { editCard.category = c; renderCardEditor(); });
+  $("cNameInput").addEventListener("input", () => { editCard.name = $("cNameInput").value; renderCardFace($("cardPreview"), editCard, { markSize: 22 }); });
+  $("cBtnFont").onclick = () => openFontPicker(editCard.font, (f) => { editCard.font = f; renderCardEditor(); });
+  $("cBtnFontSize").onclick = () => openSizePicker(editCard.fontSize, (s) => { editCard.fontSize = s; renderCardEditor(); });
+  $("cBtnTextColor").onclick = () => openColorPicker(editCard.textColor, (c) => { editCard.textColor = c; renderCardEditor(); });
+  longPress($("cBtnText"), () => { editCard.textEnabled = !editCard.textEnabled; renderCardEditor(); }, () => openPlacement($("cardPreview"), editCard.textPosition, (p) => { editCard.textPosition = p; renderCardEditor(); }));
+  longPress($("cBtnLabel"), () => { editCard.label.enabled = !editCard.label.enabled; renderCardEditor(); }, () => openLabel(editCard.label, (l) => { editCard.label = l; renderCardEditor(); }));
+  $("cBtnInfo").onclick = () => toast("Коротко по кнопкам — вкл/выкл, долго — сетка 3×3 и настройки", 3600);
+  $("cSwSecondCode").onclick = () => { editCard.secondCodeEnabled = !editCard.secondCodeEnabled; renderCardEditor(); };
+  $("cPrimaryValue").addEventListener("input", () => { editCard.primaryCode.value = $("cPrimaryValue").value; });
+  $("cPrimaryFormat").onchange = () => { editCard.primaryCode.format = $("cPrimaryFormat").value; };
+  $("cSecondaryValue").addEventListener("input", () => { editCard.secondaryCode.value = $("cSecondaryValue").value; });
+  $("cSecondaryFormat").onchange = () => { editCard.secondaryCode.format = $("cSecondaryFormat").value; };
+  $("cScanPrimary").onclick = () => openScanner("Основной код", (r) => { editCard.primaryCode = { value: r.value, format: r.format }; renderCardEditor(); toast("Формат: " + formatLabel(r.format)); });
+  $("cScanSecondary").onclick = () => openScanner("Второй код", (r) => { editCard.secondaryCode = { value: r.value, format: r.format }; renderCardEditor(); toast("Формат: " + formatLabel(r.format)); });
+  $("cPhotoPrimary").onclick = () => openPhotoDecode("Основной код с фото", (r) => { editCard.primaryCode = { value: r.value, format: r.format }; renderCardEditor(); toast("Формат: " + formatLabel(r.format)); });
+  $("cPhotoSecondary").onclick = () => openPhotoDecode("Второй код с фото", (r) => { editCard.secondaryCode = { value: r.value, format: r.format }; renderCardEditor(); toast("Формат: " + formatLabel(r.format)); });
+
+  /* ---- редактор визитки ---- */
+  $("visitSideToggle").addEventListener("click", (e) => { const b = e.target.closest("[data-side]"); if (b) setVisitSide(b.dataset.side); });
+  $("visitFlipper").addEventListener("click", (e) => { if (e.target.closest(".placement-overlay")) return; setVisitSide(visitSide === "front" ? "back" : "front"); });
+  $("vCompanyInput").addEventListener("input", () => { editVisit.company = $("vCompanyInput").value; renderVisitFace($("visitFront"), editVisit, "front", { markSize: 20 }); });
+  $("vBtnFont").onclick = () => openFontPicker(editVisit.front.font, (f) => { editVisit.front.font = f; renderVisitEditor(); });
+  $("vBtnFontSize").onclick = () => openSizePicker(editVisit.front.fontSize, (s) => { editVisit.front.fontSize = s; renderVisitEditor(); });
+  $("vBtnTextColor").onclick = () => openColorPicker(editVisit.front.textColor, (c) => { editVisit.front.textColor = c; renderVisitEditor(); });
+  longPress($("vBtnText"), () => { editVisit.front.textEnabled = !editVisit.front.textEnabled; renderVisitEditor(); }, () => openPlacement($("visitFront"), editVisit.front.textPosition, (p) => { editVisit.front.textPosition = p; renderVisitEditor(); }));
+  longPress($("vBtnLabel"), () => { editVisit.front.label.enabled = !editVisit.front.label.enabled; renderVisitEditor(); }, () => openLabel(editVisit.front.label, (l) => { editVisit.front.label = l; renderVisitEditor(); }));
+  $("vBtnBackFont").onclick = () => openFontPicker(editVisit.back.font, (f) => { editVisit.back.font = f; editVisit.back.fields.forEach((x) => { if (!x.font || x.font === editVisit.back.font) x.font = f; }); renderVisitEditor(); });
+  $("vBtnBackSize").onclick = () => openSizePicker(editVisit.back.fontSize, (s) => { editVisit.back.fontSize = s; editVisit.back.fields.forEach((x) => { x.fontSize = s; }); renderVisitEditor(); }, 10, 32);
+  $("vBtnBackColor").onclick = () => openColorPicker(editVisit.back.color, (c) => { editVisit.back.color = c; editVisit.back.fields.forEach((x) => { x.color = c; }); renderVisitEditor(); });
+  $("vBtnAddField").onclick = () => {
+    const used = editVisit.back.fields.length;
+    const zone = ["ml", "mc", "mr", "tl", "tc", "tr", "bl", "bc", "br"][Math.min(used, 8)];
+    const f = { id: uid(), text: "Новое поле", position: zone, font: editVisit.back.font, fontSize: editVisit.back.fontSize, color: editVisit.back.color };
+    editVisit.back.fields.push(f);
+    selectedFieldId = f.id;
+    renderVisitEditor();
+  };
+  $("vFieldList").addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del]"), pos = e.target.closest("[data-pos]"), ed = e.target.closest("[data-edit]"), item = e.target.closest(".field-item");
+    if (del) { editVisit.back.fields = editVisit.back.fields.filter((x) => x.id !== del.dataset.del); if (selectedFieldId === del.dataset.del) selectedFieldId = null; renderVisitEditor(); return; }
+    if (pos) { const f = editVisit.back.fields.find((x) => x.id === pos.dataset.pos); if (f) openPlacement($("visitBack"), f.position, (p) => { f.position = p; renderVisitEditor(); }); return; }
+    if (ed) { const f = editVisit.back.fields.find((x) => x.id === ed.dataset.edit); if (f) openField(f, (nf) => { Object.assign(f, nf); renderVisitEditor(); }); return; }
+    if (item) { const b = item.querySelector("[data-edit]"); selectedFieldId = b ? b.dataset.edit : null; renderFieldList(); }
+  });
+  $("vBtnBackPhoto").onclick = () => pickImage({
+    source: "gallery",
+    cb: (du) => { editVisit.back.photo = du; renderVisitEditor(); toast("Фото поставлено на оборот"); }
+  });
+  $("vBtnBackPhotoClear").onclick = () => { editVisit.back.photo = null; renderVisitEditor(); };
+
+  /* ---- предъявление ---- */
+  $("pwFirst").onclick = () => { presentMode = "first"; updatePresentUI(); };
+  $("pwSecond").onclick = () => { presentMode = "second"; updatePresentUI(); };
+  $("presentEdit").onclick = () => { const c = presentCard; presentCard = null; openCardEditor(c); };
+  $("presentDelete").onclick = () => {
+    if (!presentCard || !confirm("Удалить карту «" + (presentCard.name || "") + "»?")) return;
+    DB.cards = DB.cards.filter((c) => c.id !== presentCard.id);
+    saveDB(); presentCard = null; renderMain(); show("screen-main");
+  };
+  $("presentVisitEdit").onclick = () => { const v = presentVisit; presentVisit = null; openVisitEditor(v); };
+  $("presentVisitShare").onclick = async () => {
+    if (!presentVisit) return;
+    const v = presentVisit;
+    const txt = [v.company].concat(v.back.fields.map((f) => f.text)).filter(Boolean).join("\n");
+    try {
+      if (navigator.share) await navigator.share({ title: v.company, text: txt });
+      else { await navigator.clipboard.writeText(txt); toast("Скопировано"); }
+    } catch (e) { toast("Не получилось поделиться"); }
+  };
+
+  /* ---- списки в модалках ---- */
+  $("categoryList").addEventListener("click", (e) => { const b = e.target.closest("[data-cat]"); if (!b) return; const cb = catCb; catCb = null; $("categoryModal").classList.add("hidden"); if (cb) cb(b.dataset.cat); });
+  $("fontList").addEventListener("click", (e) => { const b = e.target.closest("[data-font]"); if (!b) return; const cb = fontCb; fontCb = null; $("fontModal").classList.add("hidden"); if (cb) cb(b.dataset.font); });
+  $("sizeGrid").addEventListener("click", (e) => { const b = e.target.closest("[data-size]"); if (!b) return; const cb = sizeCb; sizeCb = null; $("sizeModal").classList.add("hidden"); if (cb) cb(Number(b.dataset.size)); });
+
+  /* ---- фон ---- */
+  $("bgTabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) setBGTab(b.dataset.tab); });
+  $("solidPresets").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sc]");
+    if (!b) return;
+    tempShirt.mode = "solid"; tempShirt.colors = [b.dataset.sc]; bgTab = "solid"; renderBG();
+  });
+  $("btnSolidCustom").onclick = () => openColorPicker(tempShirt.colors[0] || "#ffffff", (c) => { tempShirt.mode = "solid"; tempShirt.colors = [c]; bgTab = "solid"; renderBG(); });
+  $("gradStops").addEventListener("click", (e) => {
+    const sc = e.target.closest("[data-sc]"), rm = e.target.closest("[data-rm]");
+    if (sc) {
+      const i = Number(sc.dataset.sc);
+      openColorPicker(tempShirt.colors[i], (c) => { tempShirt.colors[i] = c; normShirt(tempShirt); renderBG(); });
+    } else if (rm) {
+      const i = Number(rm.dataset.rm);
+      if (tempShirt.colors.length > 1) {
+        tempShirt.colors.splice(i, 1);
+        normShirt(tempShirt);
+        if (tempShirt.colors.length === 1) { tempShirt.mode = "solid"; bgTab = "solid"; }
+        renderBG();
+      }
+    }
+  });
+  $("btnGradAdd").onclick = () => {
+    if (tempShirt.colors.length < 3) {
+      tempShirt.colors.push(tempShirt.colors[tempShirt.colors.length - 1] || "#000000");
+      tempShirt.mode = "gradient"; bgTab = "gradient";
+      normShirt(tempShirt); renderBG();
+    }
+  };
+  $("btnGradSolid").onclick = () => { tempShirt.colors = [tempShirt.colors[0] || "#ffffff"]; tempShirt.mode = "solid"; bgTab = "solid"; normShirt(tempShirt); renderBG(); };
+  $$(".grad-preset").forEach((b) => { b.onclick = () => { tempShirt.angle = Number(b.dataset.a); normShirt(tempShirt); renderBG(); }; });
+  $("gradAngle").oninput = () => { tempShirt.angle = Number($("gradAngle").value); $("gradAngleNum").value = tempShirt.angle; paintShirt($("bgPreview"), tempShirt); };
+  $("gradAngleNum").onchange = () => { tempShirt.angle = clamp(Number($("gradAngleNum").value) || 0, 0, 360); $("gradAngle").value = tempShirt.angle; $("gradAngleNum").value = tempShirt.angle; paintShirt($("bgPreview"), tempShirt); };
+  $("gradMid").oninput = () => { tempShirt.mid = Number($("gradMid").value); $("gradMidNum").value = tempShirt.mid; paintShirt($("bgPreview"), tempShirt); };
+  $("gradMidNum").onchange = () => { tempShirt.mid = clamp(Number($("gradMidNum").value) || 50, 5, 95); $("gradMid").value = tempShirt.mid; $("gradMidNum").value = tempShirt.mid; paintShirt($("bgPreview"), tempShirt); };
+
+  /* ---- изображение рубашки: ГАЛЕРЕЯ vs КАМЕРА (главный фикс) ---- */
+  $("btnChooseImage").onclick = () => pickImage({
+    source: "gallery",
+    cb: (du) => { tempShirt.image = du; tempShirt.mode = "image"; tempShirt.imageTransform = { scale: 1, nx: 0, ny: 0 }; bgTab = "image"; renderBG(); toast("Взято из галереи"); }
+  });
+  $("btnShootImage").onclick = () => pickImage({
+    source: "camera",
+    cb: (du) => { tempShirt.image = du; tempShirt.mode = "image"; tempShirt.imageTransform = { scale: 1, nx: 0, ny: 0 }; bgTab = "image"; renderBG(); toast("Снято камерой"); }
+  });
+  $("btnRemoveImage").onclick = () => {
+    tempShirt.image = null; tempShirt.imageTransform = null;
+    tempShirt.mode = tempShirt.colors.length > 1 ? "gradient" : "solid";
+    bgTab = tempShirt.mode; renderBG();
+  };
+  $("btnImageReset").onclick = () => setCrop({ scale: 1, nx: 0, ny: 0 });
+  $("btnImageZoomIn").onclick = () => zoomFactor(1.2);
+  $("btnImageZoomOut").onclick = () => zoomFactor(1 / 1.2);
+
+  const crop = $("imgCrop");
+  crop.addEventListener("pointerdown", (e) => {
+    if (!tempShirt || !tempShirt.image) return;
+    e.preventDefault();
+    try { crop.setPointerCapture(e.pointerId); } catch (err) { }
+    imgP.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!tempShirt.imageTransform) tempShirt.imageTransform = { scale: 1, nx: 0, ny: 0 };
+    if (imgP.size === 1) {
+      imgDrag = { sx: e.clientX, sy: e.clientY, nx: tempShirt.imageTransform.nx, ny: tempShirt.imageTransform.ny };
+      imgPinch = null;
+    } else if (imgP.size === 2) {
+      const d = pinchData();
+      if (d) imgPinch = { dist: d.dist, cx: d.cx, cy: d.cy, scale: tempShirt.imageTransform.scale, nx: tempShirt.imageTransform.nx, ny: tempShirt.imageTransform.ny };
+      imgDrag = null;
+    }
+  });
+  crop.addEventListener("pointermove", (e) => {
+    const pt = imgP.get(e.pointerId);
+    if (!pt) return;
+    pt.x = e.clientX; pt.y = e.clientY;
+    if (!tempShirt || !tempShirt.image || !tempShirt.imageTransform) return;
+    if (imgP.size === 1 && imgDrag) {
+      const r = crop.getBoundingClientRect();
+      setCrop({ scale: tempShirt.imageTransform.scale, nx: imgDrag.nx + (e.clientX - imgDrag.sx) / r.width, ny: imgDrag.ny + (e.clientY - imgDrag.sy) / r.height });
+    } else if (imgP.size >= 2 && imgPinch) {
+      const d = pinchData();
+      if (!d) return;
+      const ns = clamp(imgPinch.scale * (d.dist / (imgPinch.dist || 1)), 1, 6);
+      const tx0 = imgPinch.nx * d.rect.width, ty0 = imgPinch.ny * d.rect.height;
+      const tx1 = d.cx - (ns / imgPinch.scale) * (imgPinch.cx - tx0);
+      const ty1 = d.cy - (ns / imgPinch.scale) * (imgPinch.cy - ty0);
+      setCrop({ scale: ns, nx: tx1 / d.rect.width, ny: ty1 / d.rect.height });
+    }
+  });
+  const endPtr = (e) => {
+    imgP.delete(e.pointerId);
+    if (imgP.size === 1) {
+      const r = Array.from(imgP.values())[0];
+      imgDrag = { sx: r.x, sy: r.y, nx: tempShirt && tempShirt.imageTransform ? tempShirt.imageTransform.nx : 0, ny: tempShirt && tempShirt.imageTransform ? tempShirt.imageTransform.ny : 0 };
+      imgPinch = null;
+    } else if (imgP.size === 0) { imgDrag = null; imgPinch = null; }
+  };
+  crop.addEventListener("pointerup", endPtr);
+  crop.addEventListener("pointercancel", endPtr);
+  crop.addEventListener("lostpointercapture", endPtr);
+  crop.addEventListener("wheel", (e) => {
+    if (!tempShirt || !tempShirt.image || !tempShirt.imageTransform) return;
+    e.preventDefault();
+    const r = crop.getBoundingClientRect();
+    const c = tempShirt.imageTransform;
+    const ns = clamp(c.scale * (e.deltaY < 0 ? 1.1 : 0.9), 1, 6);
+    const cx = e.clientX - r.left - r.width / 2, cy = e.clientY - r.top - r.height / 2;
+    const tx0 = c.nx * r.width, ty0 = c.ny * r.height;
+    setCrop({ scale: ns, nx: (cx - (ns / c.scale) * (cx - tx0)) / r.width, ny: (cy - (ns / c.scale) * (cy - ty0)) / r.height });
+  }, { passive: false });
+
+  $("btnBgApply").onclick = () => { const cb = bgCb; closeBG(); if (cb) cb(tempShirt_last || null); };
+  $("btnBgCancel").onclick = closeBG;
+
+  /* ---- цвет ---- */
+  $("tabGrid").onclick = () => { $("tabGrid").classList.add("active"); $("tabSpectrum").classList.remove("active"); $("panelGrid").classList.remove("hidden"); $("panelSpectrum").classList.add("hidden"); };
+  $("tabSpectrum").onclick = () => { $("tabSpectrum").classList.add("active"); $("tabGrid").classList.remove("active"); $("panelSpectrum").classList.remove("hidden"); $("panelGrid").classList.add("hidden"); };
+  $("panelGrid").addEventListener("click", (e) => {
+    const c = e.target.closest(".color-cell");
+    if (!c) return;
+    cp = { h: Number(c.dataset.h), s: Number(c.dataset.s), l: Number(c.dataset.l), sel: c.dataset.hex };
+    syncCP(true);
+  });
+  let hueDrag = false;
+  const setHue = (e) => {
+    const r = $("hueBar").getBoundingClientRect();
+    cp.h = Math.round(clamp((e.clientX - r.left) / r.width, 0, 1) * 360);
+    cp.sel = hslToHex(cp.h, cp.s, cp.l);
+    syncCP(false);
+  };
+  $("hueBar").addEventListener("pointerdown", (e) => { hueDrag = true; try { $("hueBar").setPointerCapture(e.pointerId); } catch (err) { } setHue(e); });
+  $("hueBar").addEventListener("pointermove", (e) => { if (hueDrag) setHue(e); });
+  $("hueBar").addEventListener("pointerup", () => { hueDrag = false; });
+  $("hueBar").addEventListener("pointercancel", () => { hueDrag = false; });
+  $("satRange").oninput = () => { cp.s = Number($("satRange").value); cp.sel = hslToHex(cp.h, cp.s, cp.l); syncCP(false); };
+  $("lightRange").oninput = () => { cp.l = Number($("lightRange").value); cp.sel = hslToHex(cp.h, cp.s, cp.l); syncCP(false); };
+  $("cpHex").onchange = () => {
+    const h = normalizeHex($("cpHex").value);
+    if (h) { const rgb = hexToRgb(h); const s = rgbToHsl(rgb.r, rgb.g, rgb.b); cp = { h: s.h, s: s.s, l: s.l, sel: h }; }
+    syncCP(true);
+  };
+  $("btnColorChoose").onclick = () => { const cb = colorCb; colorCb = null; $("colorModal").classList.add("hidden"); if (cb) cb(cp.sel); };
+  $("btnColorCancel").onclick = () => { colorCb = null; $("colorModal").classList.add("hidden"); };
+
+  /* ---- лейбл ---- */
+  $("lmEnabled").onclick = () => { lmTemp.enabled = !lmTemp.enabled; renderLabel(); };
+  $("lmText").addEventListener("input", () => { lmTemp.text = $("lmText").value; });
+  $("lmBtnBg").onclick = () => openColorPicker(lmTemp.bg, (c) => { lmTemp.bg = c; renderLabel(); });
+  $("lmBtnColor").onclick = () => openColorPicker(lmTemp.color, (c) => { lmTemp.color = c; renderLabel(); });
+  $("lmBtnSize").onclick = () => openSizePicker(lmTemp.fontSize, (s) => { lmTemp.fontSize = s; renderLabel(); }, 9, 28);
+  $("lmApply").onclick = () => { const cb = lmCb; lmCb = null; $("labelModal").classList.add("hidden"); if (cb) cb(lmTemp); };
+  $("lmCancel").onclick = () => { lmCb = null; $("labelModal").classList.add("hidden"); };
+
+  /* ---- поле визитки ---- */
+  $("fmText").addEventListener("input", () => { fmTemp.text = $("fmText").value; });
+  $("fmBtnFont").onclick = () => openFontPicker(fmTemp.font, (f) => { fmTemp.font = f; renderField(); });
+  $("fmBtnColor").onclick = () => openColorPicker(fmTemp.color, (c) => { fmTemp.color = c; renderField(); });
+  $("fmBtnSize").onclick = () => openSizePicker(fmTemp.fontSize, (s) => { fmTemp.fontSize = s; renderField(); }, 10, 32);
+  $("fmApply").onclick = () => { const cb = fmCb; fmCb = null; $("fieldModal").classList.add("hidden"); if (cb) cb(fmTemp); };
+  $("fmDelete").onclick = () => {
+    if (editVisit) { editVisit.back.fields = editVisit.back.fields.filter((x) => x.id !== fmTemp.id); selectedFieldId = null; renderVisitEditor(); }
+    fmCb = null; $("fieldModal").classList.add("hidden");
+  };
+
+  /* ---- сканер ---- */
+  $("scClose").onclick = closeScanner;
+  $("scFlip").onclick = () => Scanner.flip();
+  $("scTorch").onclick = () => Scanner.torch();
+  $("scShot").onclick = () => Scanner.shootFrame();
+  $("scFromPhoto").onclick = () => pickImage({ source: "gallery", cb: (du) => Scanner.decodeDataURL(du, "фото из галереи") });
+  $("scManualOk").onclick = () => {
+    const v = $("scManual").value.trim();
+    if (!v) return;
+    const cb = scannerCb; scannerCb = null;
+    closeScanner();
+    if (cb) cb({ value: v, format: guessFormatFromValue(v) });
+  };
+  $("scManual").addEventListener("keydown", (e) => { if (e.key === "Enter") $("scManualOk").click(); });
+
+  /* ---- выбор файлов (общий обработчик) ---- */
+  $("galleryInput").addEventListener("change", onImagePicked);
+  $("cameraInput").addEventListener("change", onImagePicked);
+  $("importFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) importBackup(f); });
+
+  /* ---- закрытие модалок по тапу мимо ---- */
+  ["categoryModal", "fontModal", "sizeModal", "backgroundModal", "colorModal", "labelModal", "fieldModal", "photoActionModal"].forEach((id) => {
+    const m = $(id);
+    m.addEventListener("click", (e) => {
+      if (e.target !== m) return;
+      if (id === "backgroundModal") closeBG();
+      else if (id === "colorModal") { colorCb = null; m.classList.add("hidden"); }
+      else if (id === "labelModal") { lmCb = null; m.classList.add("hidden"); }
+      else if (id === "fieldModal") { fmCb = null; m.classList.add("hidden"); }
+      else if (id === "photoActionModal") closePhotoAction();
+      else { catCb = fontCb = sizeCb = null; m.classList.add("hidden"); }
+    });
+  });
+
+  /* ---- сеть ---- */
+  window.addEventListener("online", () => { toast("Сеть появилась"); if ((document.querySelector(".screen.active") || {}).id === "screen-settings") renderSettings(); });
+  window.addEventListener("offline", () => { toast("Офлайн — данные и кэш работают"); if ((document.querySelector(".screen.active") || {}).id === "screen-settings") renderSettings(); });
+
+  /* ---- Escape ---- */
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("scannerModal").classList.contains("hidden")) { closeScanner(); return; }
+    if (!$("colorModal").classList.contains("hidden")) { colorCb = null; $("colorModal").classList.add("hidden"); return; }
+    if (!$("backgroundModal").classList.contains("hidden")) { closeBG(); return; }
+    clearPlacement();
+  });
+}
+
+/* однократное декодирование изображения без открытия сканера */
+async function decodeImageOnce(dataUrl) {
+  try {
+    if ("BarcodeDetector" in window) {
+      let det;
+      try { det = new BarcodeDetector({ formats: (DB.settings.formats || []).map((f) => FORMATS[f] && FORMATS[f].det).filter(Boolean) }); }
+      catch (e) { det = new BarcodeDetector(); }
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+      const codes = await det.detect(img);
+      if (codes && codes.length) return { value: codes[0].rawValue, format: DET_TO_INTERNAL[codes[0].format] || codes[0].format };
+    }
+  } catch (e) { }
+  try {
+    await loadZxingScript();
+    if (window.ZXing) {
+      const r = new window.ZXing.BrowserMultiFormatReader();
+      const res = await r.decodeFromImageUrl(dataUrl);
+      if (res) return { value: res.getText(), format: "code_128" };
+    }
+  } catch (e) { }
+  return null;
+}
+
+/* держим последнюю рубашку из модалки фона, чтобы применить после закрытия */
+let tempShirt_last = null;
+const _origCloseBG = closeBG;
+closeBG = function () { tempShirt_last = tempShirt ? clone(tempShirt) : null; _origCloseBG(); };
+
+/* =================================== СТАРТ ================================== */
+function init() {
+  setupPWA();
+  buildColorGrid();
+  $("solidPresets").innerHTML = PRESET_COLORS.map((c) =>
+    '<button class="color-square" type="button" data-sc="' + c + '" style="background:' + c + '" title="' + c + '"></button>'
+  ).join("");
+
+  const had = loadDB();
+  if (!had) {
+    DB.cards = [defaultCard()];
+    DB.visits = [defaultVisit()];
+    saveDB();
+  }
+  bind();
+  renderMain();
+  renderVisits();
+  renderSettings();
+  show(TAB_SCREENS.includes(lastTab) ? lastTab : "screen-main");
+
+  /* подгружаем ZXing заранее, если нативного детектора нет — чтобы первый скан был быстрым */
+  if (!("BarcodeDetector" in window)) loadZxingScript();
+}
+init();
+</script>
+</body>
+</html>
